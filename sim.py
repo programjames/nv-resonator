@@ -12,28 +12,44 @@ import pyvista
 comm = MPI.COMM_WORLD
 
 # Define the mesh
-N = 20
+N = 5
 domain = mesh.create_box(comm, [np.array([0, 0, 0]), np.array([1, 1, 1])], [N, N, N])
 
-# Define function space (Nédélec elements of the first kind)
-V = fem.functionspace(domain, ("N1curl", 1))
+# Define function space
+V = fem.functionspace(domain, ("CG", 3))
 
 # Define the weak form
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
 
 # Material parameters
-epsilon_r = 10.0  # relative permittivity of the ceramic
+epsilon_r = 34.0  # relative permittivity of the ceramic
 mu_r = 1.0  # relative permeability (assuming non-magnetic material)
-c = 3e8  # speed of light in vacuum
+c = 2.9979e8  # speed of light in vacuum
 
 a = (1/mu_r) * ufl.inner(ufl.curl(u), ufl.curl(v)) * ufl.dx
 m = epsilon_r * ufl.inner(u, v) * ufl.dx
 
+# Define boundary condition
+def boundary(x):
+    return np.logical_or.reduce((x[0] <= 1e-6, x[0] >= 1-1e-6,
+                                 x[1] <= 1e-6, x[1] >= 1-1e-6,
+                                 x[2] <= 1e-6, x[2] >= 1-1e-6))
+
+# Apply PEC boundary condition
+facets = mesh.locate_entities_boundary(domain, dim=2, marker=boundary)
+dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facets)
+
+# Create a vector-valued constant for the boundary condition
+u_bc = fem.Function(V)
+u_bc.x.array[:] = 0
+
+bc = fem.dirichletbc(u_bc, dofs)
+
 # Assemble matrices
-A = fem.petsc.assemble_matrix(fem.form(a))
+A = fem.petsc.assemble_matrix(fem.form(a), bcs=[bc])
 A.assemble()
-M = fem.petsc.assemble_matrix(fem.form(m))
+M = fem.petsc.assemble_matrix(fem.form(m), bcs=[bc])
 M.assemble()
 
 # Create eigensolver
@@ -64,6 +80,8 @@ for i in range(nconv):
 print("Resonant frequencies (Hz):")
 for i, f in enumerate(eigenvalues):
     print(f"Mode {i+1}: {f:.2e}")
+
+print("EIGENVALUES", eigenvalues)
 
 # Visualize the first mode
 if comm.rank == 0:
