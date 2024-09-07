@@ -1,0 +1,23 @@
+# Python bytecode files
+__pycache__/
+*.py[cod]
+
+# Conda environment
+.env/
+.conda/
+conda-meta/
+env/
+*.conda
+*.lock
+
+# Gmsh files
+*.msh
+*.geo
+*.pos
+*.vtk
+
+# Build and cache files
+*.log
+*.tmp
+*.h5
+*.xdmf
