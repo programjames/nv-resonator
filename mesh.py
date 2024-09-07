@@ -1,34 +1,10 @@
-"""
-In "Cavity-enhanced microwave readout of a solid-state spin sensor"
-by Dirk Englund, et al., they use a ring with
-
-outer_radius          = 8.17e-3
-inner_radius          = 4.0e-3
-height                = 7.26e-3
-permittivity          = 34
-
-If you had a cylinder with that outer_radius and height, then a
-decent approximation of its resonant frequency is
-
- 3.4e7 * (R / L + 3.45)
-------------------------
-      R * sqrt(e)
-      
-which is ~3.27 GHz. A numerical simulation gives ~3.00 GHz. Dirk
-mentioned they wanted it to be slightly off from the readout
-frequency (~2.87GHz) to avoid trapping the microwaves. However,
-drilling a hole in the middle will about double the frequency! A
-numerical simulation gives ~6.4GHz for a ring with the given
-parameters.
-"""
-
 import gmsh
 from constants import EPSILON_R as permittivity
 
 # Default values, can change with arguments (see bottom)
 outer_radius = 8.17e-3
 inner_radius = 4.0e-3
-height       = 7.26e-3 * 2
+height       = 2 * 7.26e-3
 mesh_size    = 1e-3
 
 def approx_cylinder_freq(radius, height, eps):
@@ -92,7 +68,7 @@ def create_ring(outer_radius, inner_radius, height, mesh_size, display=True):
 def main():
     import argparse
     global outer_radius, inner_radius, height, permittivity, mesh_size
-    parser = argparse.ArgumentParser(description="Find resonate frequencies of a cavity.")
+    parser = argparse.ArgumentParser(description="Generate ring or cylinder mesh.")
     parser.add_argument("type", type=str, default="ring", help="'ring' or 'cylinder'")
     parser.add_argument("-a", "--outer-radius", type=float, default=outer_radius, 
                         help=f"Outer radius of the cylinder in meters (default: {outer_radius})")

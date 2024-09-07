@@ -62,7 +62,7 @@ M.assemble()
 eps = SLEPc.EPS().create(domain.comm)
 eps.setOperators(A, M)
 eps.setProblemType(SLEPc.EPS.ProblemType.GHEP)
-eps.setDimensions(5)  # Number of eigenvalues to compute
+eps.setDimensions(10)  # Number of eigenvalues to compute
 eps.setWhichEigenpairs(SLEPc.EPS.Which.SMALLEST_REAL)
 eps.solve()
 
@@ -89,41 +89,57 @@ if domain.comm.rank == 0:
         print(f"Mode {i+1}: {freq/1e9:.4f} GHz")
 
 
-def plot_mode(frequencies, eigenvectors):
-    u_mode = fem.Function(V)
-    for i, freq in enumerate(frequencies):
-        if freq > 1e9:
-            u_mode.x.array[:] = eigenvectors[i].array
-            break
+def save_slice(grid):
+    slice = grid.slice(normal="x")
+    plotter = pv.Plotter(off_screen=True)
+    plotter.add_mesh(slice, show_edges=False, cmap="coolwarm")
+    plotter.set_background([255,255,255,0])
+    plotter.view_yz()
+    plotter.remove_scalar_bar()
+    scalar_bar = plotter.add_scalar_bar(
+        title="Normalized magnetic field\n",
+        position_x=0.2,
+        position_y=0.075,
+        title_font_size=18,
+        label_font_size=12
+    )
+    plotter.screenshot(f"images/{args.type}_slice.png", transparent_background=True)
 
-    # Get the mesh data for visualization
-    u_topology, u_cell_types, u_geometry = plot.vtk_mesh(V)
-
-    # Create a pv UnstructuredGrid for visualization
-    u_grid = pv.UnstructuredGrid(u_topology, u_cell_types, u_geometry)
-    u_grid.point_data["u"] = u_mode.x.array.real
-    
-    boundary_function = fem.Function(V)
-    bottom_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(1))
-    top_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(2))
-    outer_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(3))
-    inner_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(4))
-    boundary_function.x.array[top_dofs] = 1.0
-    boundary_function.x.array[bottom_dofs] = 10.0
-    boundary_function.x.array[outer_dofs] = -10.0
-    boundary_function.x.array[inner_dofs] = -5.0
-    
-    boundary_grid = pv.UnstructuredGrid(u_topology, u_cell_types, u_geometry)
-    boundary_grid.point_data["boundary"] = boundary_function.x.array
-
-    # Visualize the mode
-    u_plotter = pv.Plotter()
-    u_plotter.add_mesh(u_grid, show_edges=False, opacity=0.5, cmap="coolwarm")
-    # u_plotter.add_mesh(boundary_grid, opacity=1.0, cmap="coolwarm", label="Boundary")
-    # u_plotter.add_mesh_slice(u_grid)
-    u_plotter.view_isometric()
+def plot_mode(grid):
+    plotter = pv.Plotter()
+    plotter.add_mesh(grid, show_edges=False, opacity=1.0, cmap="coolwarm")
+    plotter.view_isometric()
     if not pv.OFF_SCREEN:
-        u_plotter.show()
+        plotter.show()
+        
+def plot_boundary():
+    pass
+    # boundary_function = fem.Function(V)
+    # bottom_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(1))
+    # top_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(2))
+    # outer_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(3))
+    # inner_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(4))
+    # boundary_function.x.array[top_dofs] = 1.0
+    # boundary_function.x.array[bottom_dofs] = 10.0
+    # boundary_function.x.array[outer_dofs] = -10.0
+    # boundary_function.x.array[inner_dofs] = -5.0
     
+    # boundary_grid = pv.UnstructuredGrid(topology, cell_types, geometry)
+    # boundary_grid.point_data["boundary"] = boundary_function.x.array
+    # plotter.add_mesh(boundary_grid, opacity=1.0, cmap="coolwarm", label="Boundary")
+    
+mode = fem.Function(V)
+for i, freq in enumerate(frequencies):
+    if freq > 1e9:
+        mode.x.array[:] = eigenvectors[i].array
+        break
+
+grid = pv.UnstructuredGrid(*plot.vtk_mesh(V))
+x = mode.x.array.real
+x -= x.min()
+x /= x.max()
+grid.point_data["u"] = x
+save_slice(grid)
+
 if not args.no_popup:
-    plot_mode(frequencies, eigenvectors)
+    plot_mode(grid)
