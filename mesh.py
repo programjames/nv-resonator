@@ -28,7 +28,7 @@ from constants import EPSILON_R as permittivity
 # Default values, can change with arguments (see bottom)
 outer_radius = 8.17e-3
 inner_radius = 4.0e-3
-height       = 7.26e-3
+height       = 7.26e-3 * 2
 mesh_size    = 1e-3
 
 def approx_cylinder_freq(radius, height, eps):
@@ -39,41 +39,18 @@ def approx_ring_freq(outer_radius, height, eps):
 
 def create_cylinder(radius, height, mesh_size, display=True):
     gmsh.initialize()
-    gmsh.model.add("ring")
+    gmsh.model.add("cylinder")
+    
+    cylinder = gmsh.model.occ.addCylinder(0, 0, 0, 0, 0, height, radius)
+    gmsh.model.occ.synchronize()
 
-    # Create points for outer circle
-    p1 = gmsh.model.geo.addPoint(0, 0, 0, mesh_size)
-    p2 = gmsh.model.geo.addPoint(radius, 0, 0, mesh_size)
-    p3 = gmsh.model.geo.addPoint(0, radius, 0, mesh_size)
-    p4 = gmsh.model.geo.addPoint(-radius, 0, 0, mesh_size)
-    p5 = gmsh.model.geo.addPoint(0, -radius, 0, mesh_size)
+    # Tag surfaces/volume
+    surfaces = gmsh.model.occ.getEntities(dim=2)
+    gmsh.model.addPhysicalGroup(2, [s[1] for s in surfaces], tag=1, name="Surface")
+    gmsh.model.addPhysicalGroup(3, [cylinder], tag=2, name="Volume")
 
-    # Create arcs for outer circle
-    c1 = gmsh.model.geo.addCircleArc(p2, p1, p3)
-    c2 = gmsh.model.geo.addCircleArc(p3, p1, p4)
-    c3 = gmsh.model.geo.addCircleArc(p4, p1, p5)
-    c4 = gmsh.model.geo.addCircleArc(p5, p1, p2)
-
-    # Create curve loop
-    loop = gmsh.model.geo.addCurveLoop([c1, c2, c3, c4])
-
-    # Create surface
-    bottom_surface = gmsh.model.geo.addPlaneSurface([loop])
-
-    # Extrude to create volume
-    volume = gmsh.model.geo.extrude([(2, bottom_surface)], 0, 0, height)
-
-    gmsh.model.geo.synchronize()
-
-    # Get the tags of the side surface and top surface
-    side_surfaces = [v[1] for v in volume[2:]]
-    top_surface = volume[0][1]
-
-    # Assign physical groups (important for Dolfinx)
-    gmsh.model.addPhysicalGroup(2, [bottom_surface], tag=1, name="BottomSurface")
-    gmsh.model.addPhysicalGroup(2, [top_surface], tag=2, name="TopSurface")
-    gmsh.model.addPhysicalGroup(2, side_surfaces, tag=3, name="SideSurfaces")
-    gmsh.model.addPhysicalGroup(3, [v[1] for v in volume], tag=4, name="Volume")
+    # Set mesh size
+    gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
 
     # Generate 3D mesh
     gmsh.model.mesh.generate(3)
@@ -87,53 +64,21 @@ def create_cylinder(radius, height, mesh_size, display=True):
 def create_ring(outer_radius, inner_radius, height, mesh_size, display=True):
     gmsh.initialize()
     gmsh.model.add("ring")
+    
+    # Create ring
+    outer_cylinder = gmsh.model.occ.addCylinder(0, 0, 0, 0, 0, height, outer_radius)
+    inner_cylinder = gmsh.model.occ.addCylinder(0, 0, 0, 0, 0, height, inner_radius)
+    ring, _ = gmsh.model.occ.cut([(3, outer_cylinder)], [(3, inner_cylinder)])
+    
+    gmsh.model.occ.synchronize()
 
-    # Create points for outer circle
-    p1 = gmsh.model.geo.addPoint(0, 0, 0, mesh_size)
-    p2 = gmsh.model.geo.addPoint(outer_radius, 0, 0, mesh_size)
-    p3 = gmsh.model.geo.addPoint(0, outer_radius, 0, mesh_size)
-    p4 = gmsh.model.geo.addPoint(-outer_radius, 0, 0, mesh_size)
-    p5 = gmsh.model.geo.addPoint(0, -outer_radius, 0, mesh_size)
+    # # Tag surfaces/volume
+    surfaces = gmsh.model.occ.getEntities(dim=2)
+    gmsh.model.addPhysicalGroup(2, [s[1] for s in surfaces], tag=1, name="Inner")
+    gmsh.model.addPhysicalGroup(3, [ring[0][1]], tag=2, name="Volume")
 
-    # Create arcs for outer circle
-    c1 = gmsh.model.geo.addCircleArc(p2, p1, p3)
-    c2 = gmsh.model.geo.addCircleArc(p3, p1, p4)
-    c3 = gmsh.model.geo.addCircleArc(p4, p1, p5)
-    c4 = gmsh.model.geo.addCircleArc(p5, p1, p2)
-
-    # Create points for inner circle
-    p6 = gmsh.model.geo.addPoint(inner_radius, 0, 0, mesh_size)
-    p7 = gmsh.model.geo.addPoint(0, inner_radius, 0, mesh_size)
-    p8 = gmsh.model.geo.addPoint(-inner_radius, 0, 0, mesh_size)
-    p9 = gmsh.model.geo.addPoint(0, -inner_radius, 0, mesh_size)
-
-    # Create arcs for inner circle
-    c5 = gmsh.model.geo.addCircleArc(p6, p1, p7)
-    c6 = gmsh.model.geo.addCircleArc(p7, p1, p8)
-    c7 = gmsh.model.geo.addCircleArc(p8, p1, p9)
-    c8 = gmsh.model.geo.addCircleArc(p9, p1, p6)
-
-    # Create curve loops
-    outer_loop = gmsh.model.geo.addCurveLoop([c1, c2, c3, c4])
-    inner_loop = gmsh.model.geo.addCurveLoop([c5, c6, c7, c8])
-
-    # Create surface
-    bottom_surface = gmsh.model.geo.addPlaneSurface([outer_loop, inner_loop])
-
-    # Extrude to create volume
-    volume = gmsh.model.geo.extrude([(2, bottom_surface)], 0, 0, height)
-
-    gmsh.model.geo.synchronize()
-
-    # Get the tags of the side surface and top surface
-    side_surfaces = [v[1] for v in volume[2:]]
-    top_surface = volume[0][1]
-
-    # Assign physical groups (important for Dolfinx)
-    gmsh.model.addPhysicalGroup(2, [bottom_surface], tag=1, name="BottomSurface")
-    gmsh.model.addPhysicalGroup(2, [top_surface], tag=2, name="TopSurface")
-    gmsh.model.addPhysicalGroup(2, side_surfaces, tag=3, name="SideSurfaces")
-    gmsh.model.addPhysicalGroup(3, [volume[1][1]], tag=4, name="Volume")
+    # Set mesh size
+    gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
 
     # Generate 3D mesh
     gmsh.model.mesh.generate(3)
