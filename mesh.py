@@ -159,7 +159,7 @@ def main():
         
         create_ring(outer_radius, inner_radius, height, mesh_size, display=not args.no_popup)
         freq = approx_ring_freq(outer_radius, height, permittivity)
-        print(f"Cavity frequency is about {freq/1e9:.4f} GHz")
+        print(f"Cavity frequency is approximately {freq/1e9:.4f} GHz")
         
     elif args.type.lower() == "cylinder":
         radius = args.outer_radius
@@ -169,7 +169,7 @@ def main():
         
         create_cylinder(radius, height, mesh_size, display=not args.no_popup)
         freq = approx_cylinder_freq(radius, height, permittivity)
-        print(f"Cavity frequency is about {freq/1e9:.4f} GHz")
+        print(f"Cavity frequency is approximately {freq/1e9:.4f} GHz")
         
 if __name__ == "__main__":
     main()
