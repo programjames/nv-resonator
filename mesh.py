@@ -28,7 +28,7 @@ from constants import EPSILON_R as permittivity
 # Default values, can change with arguments (see bottom)
 outer_radius = 8.17e-3
 inner_radius = 4.0e-3
-height       = 7.26e-3 * 2
+height       = 7.26e-3
 mesh_size    = 1e-3
 
 def approx_cylinder_freq(radius, height, eps):
@@ -73,7 +73,7 @@ def create_cylinder(radius, height, mesh_size, display=True):
     gmsh.model.addPhysicalGroup(2, [bottom_surface], tag=1, name="BottomSurface")
     gmsh.model.addPhysicalGroup(2, [top_surface], tag=2, name="TopSurface")
     gmsh.model.addPhysicalGroup(2, side_surfaces, tag=3, name="SideSurfaces")
-    gmsh.model.addPhysicalGroup(3, [volume[1][1]], tag=4, name="Volume")
+    gmsh.model.addPhysicalGroup(3, [v[1] for v in volume], tag=4, name="Volume")
 
     # Generate 3D mesh
     gmsh.model.mesh.generate(3)
