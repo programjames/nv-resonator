@@ -58,16 +58,22 @@ def create_cylinder(radius, height, mesh_size, display=True):
     loop = gmsh.model.geo.addCurveLoop([c1, c2, c3, c4])
 
     # Create surface
-    surface = gmsh.model.geo.addPlaneSurface([loop])
+    bottom_surface = gmsh.model.geo.addPlaneSurface([loop])
 
     # Extrude to create volume
-    volume = gmsh.model.geo.extrude([(2, surface)], 0, 0, height)
+    volume = gmsh.model.geo.extrude([(2, bottom_surface)], 0, 0, height)
 
     gmsh.model.geo.synchronize()
 
+    # Get the tags of the side surface and top surface
+    side_surfaces = [v[1] for v in volume[2:]]
+    top_surface = volume[0][1]
+
     # Assign physical groups (important for Dolfinx)
-    gmsh.model.addPhysicalGroup(2, [surface], tag=1, name="Surface")
-    gmsh.model.addPhysicalGroup(3, [v[1] for v in volume], tag=2, name="Volume")
+    gmsh.model.addPhysicalGroup(2, [bottom_surface], tag=1, name="BottomSurface")
+    gmsh.model.addPhysicalGroup(2, [top_surface], tag=2, name="TopSurface")
+    gmsh.model.addPhysicalGroup(2, side_surfaces, tag=3, name="SideSurfaces")
+    gmsh.model.addPhysicalGroup(3, [volume[1][1]], tag=4, name="Volume")
 
     # Generate 3D mesh
     gmsh.model.mesh.generate(3)
@@ -112,16 +118,22 @@ def create_ring(outer_radius, inner_radius, height, mesh_size, display=True):
     inner_loop = gmsh.model.geo.addCurveLoop([c5, c6, c7, c8])
 
     # Create surface
-    surface = gmsh.model.geo.addPlaneSurface([outer_loop, inner_loop])
+    bottom_surface = gmsh.model.geo.addPlaneSurface([outer_loop, inner_loop])
 
     # Extrude to create volume
-    volume = gmsh.model.geo.extrude([(2, surface)], 0, 0, height)
+    volume = gmsh.model.geo.extrude([(2, bottom_surface)], 0, 0, height)
 
     gmsh.model.geo.synchronize()
 
+    # Get the tags of the side surface and top surface
+    side_surfaces = [v[1] for v in volume[2:]]
+    top_surface = volume[0][1]
+
     # Assign physical groups (important for Dolfinx)
-    gmsh.model.addPhysicalGroup(2, [surface], tag=1, name="Surface")
-    gmsh.model.addPhysicalGroup(3, [v[1] for v in volume], tag=2, name="Volume")
+    gmsh.model.addPhysicalGroup(2, [bottom_surface], tag=1, name="BottomSurface")
+    gmsh.model.addPhysicalGroup(2, [top_surface], tag=2, name="TopSurface")
+    gmsh.model.addPhysicalGroup(2, side_surfaces, tag=3, name="SideSurfaces")
+    gmsh.model.addPhysicalGroup(3, [volume[1][1]], tag=4, name="Volume")
 
     # Generate 3D mesh
     gmsh.model.mesh.generate(3)
