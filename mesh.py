@@ -4,7 +4,7 @@ from constants import EPSILON_R as permittivity
 # Default values, can change with arguments (see bottom)
 outer_radius = 8.17e-3
 inner_radius = 4.0e-3
-height       = 2 * 7.26e-3
+height       = 7.26e-3 * 2
 mesh_size    = 1e-3
 
 def approx_cylinder_freq(radius, height, eps):

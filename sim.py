@@ -7,6 +7,7 @@ import numpy as np
 import ufl
 import pyvista as pv
 import argparse
+import basix
 
 from constants import C, EPSILON_R, MU_R
 
@@ -26,61 +27,51 @@ num_3d_cells = domain.topology.index_map(domain.topology.dim).size_local
 print(f"Number of 3D cells: {num_3d_cells}")
 
 # Create function space and test/trial functions
-V = fem.FunctionSpace(domain, ("CG", 1))
+V = fem.FunctionSpace(domain, ("N1curl", 1))
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
 
 # Weak formulation
-a = 1/MU_R * ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-m = EPSILON_R * ufl.inner(u, v) * ufl.dx
+a = ufl.inner(ufl.curl(u), ufl.curl(v)) * ufl.dx  # Stiffness matrix
+m = EPSILON_R * MU_R * ufl.inner(u, v) * ufl.dx  # Mass matrix
 
+# Boundary condition
 boundary_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(1))
-
-# n = ufl.FacetNormal(domain)
-
-# Add boundary term to the weak form
-# a += ufl.inner(ufl.cross(n, ufl.grad(u)), ufl.cross(n, ufl.grad(v))) * ufl.ds
-
-# Create a vector-valued constant for the boundary condition
 u_bc = fem.Function(V)
 u_bc.x.array[:] = 0
 
 bc = fem.dirichletbc(u_bc, boundary_dofs)
 
-# # Assemble matrices
+# Assemble matrices
 A = fem.petsc.assemble_matrix(fem.form(a), bcs=[bc])
 A.assemble()
 M = fem.petsc.assemble_matrix(fem.form(m), bcs=[bc])
 M.assemble()
 
-# A = fem.petsc.assemble_matrix(fem.form(a))
-# A.assemble()
-# M = fem.petsc.assemble_matrix(fem.form(m))
-# M.assemble()
-
-# Create eigensolver
+# Solve eigenvalue problem
 eps = SLEPc.EPS().create(domain.comm)
 eps.setOperators(A, M)
 eps.setProblemType(SLEPc.EPS.ProblemType.GHEP)
-eps.setDimensions(10)  # Number of eigenvalues to compute
-eps.setWhichEigenpairs(SLEPc.EPS.Which.SMALLEST_REAL)
+eps.setDimensions(10)
+eps.setWhichEigenpairs(SLEPc.EPS.Which.TARGET_MAGNITUDE)
+eps.setTarget(3e9 / C * 2 * np.pi)
 eps.solve()
 
 # Extract eigenvalues and eigenvectors
 nconv = eps.getConverged()
 frequencies = []
-eigenvectors = []
+modes = []
 
 for i in range(nconv):
-    eigenvalue = eps.getEigenvalue(i)
     # Convert eigenvalue to frequency
+    eigenvalue = eps.getEigenvalue(i)
     frequency = np.sqrt(eigenvalue.real) * C / (2 * np.pi)
     frequencies.append(frequency)
     
-    # Extract eigenvector
+    # Convert eigenvector to mode
     vr, vi = A.getVecs()
     eps.getEigenvector(i, vr, vi)
-    eigenvectors.append(vr)
+    modes.append(vr.array + 1j * vi.array)
     
 # Print frequencies
 if domain.comm.rank == 0:
@@ -92,7 +83,7 @@ if domain.comm.rank == 0:
 def save_slice(grid):
     slice = grid.slice(normal="x")
     plotter = pv.Plotter(off_screen=True)
-    plotter.add_mesh(slice, show_edges=False, cmap="coolwarm")
+    plotter.add_mesh(slice, show_edges=False, cmap="viridis")
     plotter.set_background([255,255,255,0])
     plotter.view_yz()
     plotter.remove_scalar_bar()
@@ -105,41 +96,119 @@ def save_slice(grid):
     )
     plotter.screenshot(f"images/{args.type}_slice.png", transparent_background=True)
 
-def plot_mode(grid):
-    plotter = pv.Plotter()
-    plotter.add_mesh(grid, show_edges=False, opacity=1.0, cmap="coolwarm")
-    plotter.view_isometric()
-    if not pv.OFF_SCREEN:
+def plot_mode(mode):
+    # Create vector space with 3 elements
+    cell_type = str(domain.ufl_cell())
+    element = basix.ufl.element("Lagrange", cell_type, 1, shape=(3,))
+    V_vec = dolfinx.fem.FunctionSpace(domain, element)
+    grid = pv.UnstructuredGrid(*plot.vtk_mesh(V_vec))
+    
+    mode_vec = fem.Function(V)
+    mode_vec.vector.array[:] = mode.real
+    
+    # Interpolate mode into vector space
+    u_vec = dolfinx.fem.Function(V_vec)
+    u_vec.interpolate(mode_vec)
+    
+    # Interpolate magnitude onto vector space
+    
+    mode_vec.vector.array[:] = abs(mode)
+    u_mag = dolfinx.fem.Function(V_vec)
+    u_mag.interpolate(mode_vec)
+    
+    # Create Grid
+    grid.point_data["H_field"] = np.linalg.norm(u_mag.x.array.reshape(-1, 3), axis=1)
+    grid.point_data["H_field_vector"] = u_vec.x.array.real.reshape(-1, 3)
+    arrows = grid.glyph(
+        orient="H_field_vector",
+        scale="H_field",
+        factor=5e-6,
+    )
+    
+    # Save slice
+    save_slice(grid)
+    
+    if not args.no_popup:
+        # Plot and show
+        plotter = pv.Plotter()
+        plotter.add_mesh(grid, opacity=0.5, scalars="H_field", cmap="viridis")
+        plotter.add_mesh(arrows)
+        plotter.view_isometric()
         plotter.show()
-        
-def plot_boundary():
-    pass
-    # boundary_function = fem.Function(V)
-    # bottom_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(1))
-    # top_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(2))
-    # outer_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(3))
-    # inner_dofs = fem.locate_dofs_topological(V, entity_dim=2, entities=facet_tags.find(4))
-    # boundary_function.x.array[top_dofs] = 1.0
-    # boundary_function.x.array[bottom_dofs] = 10.0
-    # boundary_function.x.array[outer_dofs] = -10.0
-    # boundary_function.x.array[inner_dofs] = -5.0
-    
-    # boundary_grid = pv.UnstructuredGrid(topology, cell_types, geometry)
-    # boundary_grid.point_data["boundary"] = boundary_function.x.array
-    # plotter.add_mesh(boundary_grid, opacity=1.0, cmap="coolwarm", label="Boundary")
-    
-mode = fem.Function(V)
-for i, freq in enumerate(frequencies):
+
+for freq, mode in zip(frequencies, modes):
     if freq > 1e9:
-        mode.x.array[:] = eigenvectors[i].array
-        break
+        plot_mode(mode)
 
-grid = pv.UnstructuredGrid(*plot.vtk_mesh(V))
-x = mode.x.array.real
-x -= x.min()
-x /= x.max()
-grid.point_data["u"] = x
-save_slice(grid)
+exit()
 
-if not args.no_popup:
-    plot_mode(grid)
+# Project the H(curl) solution onto the vector-valued space
+u_vec = dolfinx.fem.Function(V_vec)
+u_vec.interpolate(mode)
+
+# Convert dolfinx mesh to pv mesh
+
+# Add point data to the mesh
+grid.point_data["H_field"] = np.linalg.norm(u_vec.x.array.reshape(-1, 3), axis=1)
+plotter = pv.Plotter()
+plotter.add_mesh(grid, scalars="H_field", cmap="viridis")
+plotter.show()
+
+grid.point_data["H_field_vector"] = u_vec.x.array.reshape(-1, 3)
+plotter = pv.Plotter()
+arrows = grid.glyph(
+    orient="H_field_vector",
+    scale="H_field",
+    factor=5e-6,
+)
+plotter.add_mesh(arrows)
+plotter.add_scalar_bar(title="Magnetic Field")
+plotter.show()
+
+# curl_element = basix.ufl.element("Lagrange", str(domain.ufl_cell()), 1, shape=(3,))
+# V_curl = dolfinx.fem.FunctionSpace(domain, curl_element)
+# curl_u = dolfinx.fem.Function(V_curl)
+# curl_u.interpolate(ufl.curl(mode))
+
+# E_field = curl_u.x.array.reshape(-1, 3)
+# E_magnitude = np.linalg.norm(E_field, axis=1)
+# grid.point_data["E_field"] = E_magnitude
+# grid.point_data["E_field_vector"] = E_field
+
+# plotter = pyvista.Plotter()
+# plotter.add_mesh(grid, scalars="E_field", cmap="plasma")
+# plotter.add_scalar_bar(title="Electric Field Magnitude (curl of H)")
+# plotter.show()
+
+# # Visualize E-field vectors
+# plotter = pyvista.Plotter()
+# plotter.add_mesh(grid, scalars="E_field", cmap="plasma")
+# e_arrows = grid.glyph(
+#     orient="E_field_vector",
+#     scale="E_field",
+#     factor=5e-6,  # Adjust this factor to change arrow size
+# )
+# plotter.add_mesh(e_arrows)
+# plotter.add_scalar_bar(title="Electric Field")
+# plotter.show()
+
+
+
+# grid = pv.UnstructuredGrid(*plot.vtk_mesh(V))
+# x = mode.x.array.real
+# x -= x.min()
+# x /= x.max()
+# grid.point_data["H_field"] = mode.x.array.real
+# plotter = pv.Plotter()
+# plotter.add_mesh(grid, scalars="H_field", cmap="viridis")
+# plotter.show()
+
+# grid.point_data["u"] = x
+# save_slice(grid)
+
+# if not args.no_popup:
+#     plot_mode(grid)
+    
+# grid = pv.UnstructuredGrid(*plot.vtk_mesh(V))
+
+# grid.point_data["u"] = vr.x.array
