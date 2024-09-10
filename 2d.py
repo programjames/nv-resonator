@@ -1,12 +1,22 @@
-import numpy as np
-import ufl
 from mpi4py import MPI
-import h5py
-from petsc4py import PETSc
 from slepc4py import SLEPc
 import dolfinx.fem.petsc
-from dolfinx import fem, mesh, io
+from dolfinx import fem
+from dolfinx.plot import vtk_mesh
 from dolfinx.io import gmshio
+import os, shutil
+import numpy as np
+import pyvista as pv
+import matplotlib.pyplot as plt
+
+from constants import *
+import ufl
+from ufl import inner, dot, grad, dx, Dx, ds, TrialFunction, TestFunction, SpatialCoordinate
+
+cache_dir = os.path.expanduser("~/.cache/fenics")
+if os.path.exists(cache_dir):
+    shutil.rmtree(cache_dir)
+    print(f"Cleared FEniCS cache: {cache_dir}")
 
 # Read mesh
 domain, cell_tags, facet_tags = gmshio.read_from_msh("resonator.msh", MPI.COMM_WORLD, gdim=2)
@@ -14,87 +24,68 @@ domain, cell_tags, facet_tags = gmshio.read_from_msh("resonator.msh", MPI.COMM_W
 # Function space
 V = fem.FunctionSpace(domain, ("CG", 1))
 
-# Define problem constants
-EPSILON_R_CERAMIC = 34.0  # Relative permittivity of the ceramic
-EPSILON_R_AIR = 1.0  # Relative permittivity of air
-MU_R = 1.0  # Relative permeability
-C = 299792458  # Speed of light in vacuum
-
-# TODO: formulate this properly
-
-# Create a function to represent the relative permittivity
+# Relative permittivity
 epsilon_r = fem.Function(V)
-air_cells = cell_tags.find(1)
-ceramic_cells = cell_tags.find(2)
-air_dofs = fem.locate_dofs_topological(V, domain.topology.dim, air_cells)
-ceramic_dofs = fem.locate_dofs_topological(V, domain.topology.dim, ceramic_cells)
-epsilon_r.x.array[air_dofs] = EPSILON_R_AIR
-epsilon_r.x.array[ceramic_dofs] = EPSILON_R_CERAMIC
+air_dofs = fem.locate_dofs_topological(V, domain.topology.dim, cell_tags.find(2))
+ceramic_dofs = fem.locate_dofs_topological(V, domain.topology.dim, cell_tags.find(1))
+epsilon_r.x.array[air_dofs] = 1
+epsilon_r.x.array[ceramic_dofs] = EPSILON_R
 
-# Weak formulation
-u = ufl.TrialFunction(V)
-v = ufl.TestFunction(V)
+# Trial and test functions
+u = TrialFunction(V)
+v = TestFunction(V)
 
-# For axisymmetric problems, we need to include the radial coordinate in the integrals
-x = ufl.SpatialCoordinate(domain)
-r = x[1]  # Radial coordinate (assuming y is the radial direction in your mesh)
+# Coordinate system
+x = SpatialCoordinate(domain)
+r = x[1]
 
-# Corrected weak form for the TE01n modes
-a = (ufl.inner(ufl.Dx(u, 1), ufl.Dx(v, 1)) +
-     ufl.inner(ufl.Dx(u, 0), ufl.Dx(v, 0))) * ufl.dx
-a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-a += ufl.inner(r * ufl.Dx(u, 1), ufl.Dx(v, 1)) * ufl.dx - ufl.inner(ufl.Dx(u, 1), r * ufl.Dx(v, 1)) * ufl.dx
-m = ufl.inner(u, v) * ufl.dx
+# Define the weak form
+a = r * dot(grad(u), grad(v)) * dx + \
+    1/r * u * v * dx + \
+    0#r * u * v * ds
 
-# Boundary condition
-boundary_dofs = fem.locate_dofs_topological(V, entity_dim=1, entities=facet_tags.find(1))
-u_bc = fem.Function(V)
-u_bc.x.array[:] = 0
-
-bc = fem.dirichletbc(u_bc, boundary_dofs)
+m = r * epsilon_r * u * v * dx
 
 # Assemble matrices
-A = fem.petsc.assemble_matrix(fem.form(a), bcs=[bc])
+A = fem.petsc.assemble_matrix(fem.form(a))
 A.assemble()
-M = fem.petsc.assemble_matrix(fem.form(m), bcs=[bc])
+M = fem.petsc.assemble_matrix(fem.form(m))
 M.assemble()
 
-# Create eigensolver
-eps = SLEPc.EPS().create(MPI.COMM_WORLD)
+# Solve eigenproblem
+eps = SLEPc.EPS().create(domain.comm)
 eps.setOperators(A, M)
 eps.setProblemType(SLEPc.EPS.ProblemType.GNHEP)
-eps.setDimensions(10)  # Number of eigenvalues to compute
-eps.setWhichEigenpairs(SLEPc.EPS.Which.TARGET_MAGNITUDE)
-eps.setTarget(3e9 / C * 2 * np.pi)  # Target frequency (adjust as needed)
+eps.setDimensions(10)
+eps.setWhichEigenpairs(SLEPc.EPS.Which.SMALLEST_MAGNITUDE)
 eps.solve()
 
-# Extract eigenvalues and eigenvectors
+
 nconv = eps.getConverged()
-print(f"Number of converged eigenpairs: {nconv}")
+print(f"Number of converged eigenvalues: {nconv}")
 
-with h5py.File('resonator_modes.h5', 'w') as f:
-    # Store mesh data
-    f.create_dataset('coordinates', data=domain.geometry.x)
-    f.create_dataset('topology', data=cell_tags.values)
-    f.create_dataset('topology_tags', data=cell_tags.indices)
-    
-    # Create a group for modes
-    modes_group = f.create_group('modes')
+# Extract eigenvalues and eigenvectors
+for i in range(nconv):
+    eigval = eps.getEigenvalue(i)
+    f = np.sqrt(eigval.real) * C / (2 * np.pi)
+    print(f"Frequency {i}: f = {f/1e9:.4f} GHz")
 
-    for i in range(nconv):
-        eigenvalue = eps.getEigenvalue(i)
-        k = np.sqrt(eigenvalue.real)
-        f = k * C / (2 * np.pi)
-        print(f"Mode {i+1}: f = {f/1e9:.4e} GHz")
+    # Get eigenvector
+    vr, vi = A.createVecs()
+    eps.getEigenvector(i, vr, vi)
 
-        # Compute and normalize eigenvector
-        vr, vi = A.createVecs()
-        eps.getEigenvector(i, vr, vi)
-        
-        mode_group = modes_group.create_group(f'mode_{i+1}')
-        
-        # Store mode data and attributes
-        mode_group.create_dataset('data', data=vr.array)
-        mode_group.attrs['frequency'] = f
+    topology, cell_types, geometry = vtk_mesh(domain)
+    grid = pv.UnstructuredGrid(topology, cell_types, geometry)
+    plotter = pv.Plotter()
+    grid.point_data["u"] = vr.array
+    grid.set_active_scalars("u")
+    plotter.add_mesh(grid, show_edges=True)
+    plotter.view_xy()
+    if not pv.OFF_SCREEN:
+        plotter.show()
+    else:
+        figure = plotter.screenshot("fundamentals_mesh.png")
 
-print("Simulation complete.")
+# Clean up
+A.destroy()
+M.destroy()
