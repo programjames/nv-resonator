@@ -24,7 +24,7 @@ if os.path.exists(cache_dir):
 domain, cell_tags, facet_tags = gmshio.read_from_msh("mesh/resonator.msh", MPI.COMM_WORLD, gdim=2)
 
 # Function space
-V = fem.VectorFunctionSpace(domain, ("CG", 1), dim=2)
+V = fem.FunctionSpace(domain, ("CG", 1, (2,)))
 
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
@@ -52,8 +52,9 @@ daxis = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
 
 # Define the weak form
 a = r * inner(grad(u), grad(v)) * dx + \
-    1 / r * ur * vr * dx - \
-    0 #1j * r * inner(u, v) * ds(3)
+    1 / r * ur * vr * dx
+    
+b = -1j * epsilon_r**0.5 * r * inner(u, v) * ds(3)
 
 m = r * epsilon_r * inner(u, v) * dx
 
@@ -63,30 +64,32 @@ u_bc = fem.Function(V)
 u_bc.x.array[:] = 0
 
 bc = fem.dirichletbc(u_bc, boundary_dofs)
-bcs = [bc]
-# bcs = []
+# bcs = [bc]
+bcs = []
 
-# Assemble matrices
 A = fem.petsc.assemble_matrix(fem.form(a), bcs=bcs)
 A.assemble()
+B = fem.petsc.assemble_matrix(fem.form(b), bcs=bcs)
+B.assemble()
 M = fem.petsc.assemble_matrix(fem.form(m), bcs=bcs)
 M.assemble()
 
-# Target eigenvalue
-target = (3e9 * 2 * np.pi / C)**2
+target = (3e9 * 2 * np.pi / C)
+pep = SLEPc.PEP().create(domain.comm)
 
-# Solve eigenproblem
-eps = SLEPc.EPS().create(domain.comm)
-eps.setOperators(A, M)
-eps.setProblemType(SLEPc.EPS.ProblemType.GNHEP)
-eps.setDimensions(50)
-eps.setWhichEigenpairs(SLEPc.EPS.Which.SMALLEST_MAGNITUDE)
-eps.setTarget(target)
+# Set the matrices for the quadratic eigenvalue problem
+pep.setOperators([M, B, A])  # Order: M*lambda^2 + B*lambda + A
 
-st = eps.getST()
-# st.setType(SLEPc.ST.Type.SINVERT)
+# Set solver options
+pep.setProblemType(SLEPc.PEP.ProblemType.GENERAL)
+pep.setType(SLEPc.PEP.Type.QARNOLDI) #TOAR, LINEAR, QARNOLDI, STOAR
+pep.setDimensions(nev=100, ncv=200, mpd=100)
+pep.setWhichEigenpairs(SLEPc.PEP.Which.TARGET_MAGNITUDE)  # Find eigenvalues closest to target
+pep.setTarget(target)
 
-# Set the shift to your target value
+# Set up the spectral transformation
+st = pep.getST()
+st.setType(SLEPc.ST.Type.SINVERT)
 st.setShift(target)
 
 # Configure the linear solver for the transformation
@@ -95,49 +98,55 @@ ksp.setType(PETSc.KSP.Type.PREONLY)
 pc = ksp.getPC()
 pc.setType(PETSc.PC.Type.LU)
 
-# Optionally, you can set a convergence test
-# eps.setConvergenceTest(SLEPc.EPS.Conv.REL)
+# Set convergence test and tolerance
+# pep.setConvergenceTest(SLEPc.PEP.Conv.REL)
+# pep.setTolerances(tol=1e-10, max_it=1000)
 
-# Now you can call eps.solve()
-eps.solve()
+# Solve the eigenvalue problem
+pep.solve()
 
-nconv = eps.getConverged()
+nconv = pep.getConverged()
 print("Total converged", nconv)
+
+vr, vi = pep.getOperators()[0].createVecs()
 
 # Extract eigenvalues and eigenvectors
 for i in range(nconv):
-    eigval = eps.getEigenvalue(i)
-    f = np.sqrt(eigval.real) * C / (2 * np.pi)
-    if f < 1e9: continue
+    eigval = pep.getEigenpair(i, vr, vi)
+    f = (1 / eigval).imag * C / (2 * np.pi)
     print(f"Frequency {i}: f = {f/1e9:.4f} GHz")
 
-    # Get eigenvector
-    vr, _ = A.createVecs()
-    eps.getEigenvector(i, vr, _)
 
-
-    H = vr.array.reshape(-1, 2)
-    H *= H.shape[0]**0.5 / np.linalg.norm(H, 1)
+    H = vr.array.real.reshape(-1, 2)
+    H /= H.max()
     H = np.pad(H, ((0, 0), (0, 1)))
+    
+    print(np.linalg.norm(H))
+    
+    
+    if abs(f) < 1e9 or abs(f) > 8e9: continue
 
     topology, cell_types, geometry = vtk_mesh(V)
     grid = pv.UnstructuredGrid(topology, cell_types, geometry)
     plotter = pv.Plotter()
-
-    grid.point_data["u"] = H.real
+    
+    sign = np.sign(np.where(np.abs(H[:, 0]) > np.abs(H[:, 1]), H[:, 0], H[:, 1]))
+    H_mag = sign * np.linalg.norm(H, axis=-1)
+    
+    grid.point_data["u"] = H_mag
     grid.set_active_scalars("u")
     
     plotter.add_mesh(grid, show_edges=False, cmap="jet")
-    plotter.add_arrows(grid.points, H.real, mag=1e-2, color="white")
+    plotter.add_arrows(grid.points, H, mag=1e-3, color="white")
     
     # Add in reflection
     grid = grid.reflect(normal=(0, 1, 0))
     H[:, 1] *= -1
-    grid.point_data["u"] = H.real
+    grid.point_data["u"] = H_mag
     grid.set_active_scalars("u")
     
     plotter.add_mesh(grid, show_edges=False, cmap="jet")
-    plotter.add_arrows(grid.points, H.real, mag=1e-2, color="white")
+    plotter.add_arrows(grid.points, H, mag=1e-3, color="white")
 
     # Show
     plotter.view_xy()
