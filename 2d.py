@@ -78,12 +78,12 @@ target = (3e9 * 2 * np.pi / C)
 pep = SLEPc.PEP().create(domain.comm)
 
 # Set the matrices for the quadratic eigenvalue problem
-pep.setOperators([M, B, A])  # Order: M*lambda^2 + B*lambda + A
+pep.setOperators([A, B, M])  # Order: M*lambda^2 + B*lambda + A
 
 # Set solver options
 pep.setProblemType(SLEPc.PEP.ProblemType.GENERAL)
-pep.setType(SLEPc.PEP.Type.QARNOLDI) #TOAR, LINEAR, QARNOLDI, STOAR
-pep.setDimensions(nev=100, ncv=200, mpd=100)
+pep.setType(SLEPc.PEP.Type.TOAR) #TOAR, LINEAR, QARNOLDI, STOAR
+pep.setDimensions(nev=10, ncv=200, mpd=100)
 pep.setWhichEigenpairs(SLEPc.PEP.Which.TARGET_MAGNITUDE)  # Find eigenvalues closest to target
 pep.setTarget(target)
 
@@ -113,16 +113,12 @@ vr, vi = pep.getOperators()[0].createVecs()
 # Extract eigenvalues and eigenvectors
 for i in range(nconv):
     eigval = pep.getEigenpair(i, vr, vi)
-    f = (1 / eigval).imag * C / (2 * np.pi)
+    f = abs(eigval) * C / (2 * np.pi)
     print(f"Frequency {i}: f = {f/1e9:.4f} GHz")
 
-
-    H = vr.array.real.reshape(-1, 2)
+    H = vr.array.imag.reshape(-1, 2)
     H /= H.max()
     H = np.pad(H, ((0, 0), (0, 1)))
-    
-    print(np.linalg.norm(H))
-    
     
     if abs(f) < 1e9 or abs(f) > 8e9: continue
 
@@ -130,8 +126,9 @@ for i in range(nconv):
     grid = pv.UnstructuredGrid(topology, cell_types, geometry)
     plotter = pv.Plotter()
     
-    sign = np.sign(np.where(np.abs(H[:, 0]) > np.abs(H[:, 1]), H[:, 0], H[:, 1]))
-    H_mag = sign * np.linalg.norm(H, axis=-1)
+    # sign = np.sign(np.where(np.abs(H[:, 0]) > np.abs(H[:, 1]), H[:, 0], H[:, 1]))
+    # H_mag = sign * np.linalg.norm(H, axis=-1)
+    H_mag = H
     
     grid.point_data["u"] = H_mag
     grid.set_active_scalars("u")
