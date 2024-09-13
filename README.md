@@ -42,7 +42,11 @@ It should save them in `images/modes/<freq>.png`. Here's an example:
 
 ## Theory
 
-In [Cavity-Enhanced Microwave Readout of a Solid-State Spin Sensor](https://www.nature.com/articles/s41467-021-21256-7) by Dirk Englund, et al., they stack two resonators with
+<div style="text-align: center">
+    <img src="images/paper_simulation.png" alt="Paper Simulation" width="50%"/>
+</div>
+
+In [Cavity-Enhanced Microwave Readout of a Solid-State Spin Sensor](https://www.nature.com/articles/s41467-021-21256-7) by Dirk Englund, et al., they use dielectric resonators to couple with an NV center. Their resonators have the following parameters:
 
 ```
 outer_radius (a) = 8.17e-3
@@ -51,17 +55,13 @@ height       (L) = 7.26e-3
 permittivity (ε) ~ 34
 ```
 
-<div style="text-align: center">
-    <img src="images/paper_simulation.png" alt="Paper Simulation" width="50%"/>
-</div>
-
-The readout frequency of an NV center is ~2.87 GHz, so they want to tune the cavity to have a mode ~3 GHz. Their simulation (above) uses two resonators with the diamond placed between as a source. A cylindrical resonator's $TE_{01n}$ mode is approxmately
+The readout frequency of an NV center is ~2.87 GHz, so they want to tune the cavity to have a mode ~3 GHz. Their simulation (above) places the diamond between two resonators as a source. A cylindrical resonator's $TE_{01n}$ mode is approxmately
 
 $$\frac{0.034 (a/L + 3.45)}{a\sqrt{\epsilon}} GHz,$$
 
-given by Kajfez & Guillon in [Dielectric resonators](https://search.worldcat.org/en/title/927557286) and readily available on [Wikipedia](https://en.wikipedia.org/wiki/Dielectric_resonator#Theory_of_operation). This approximation yields resonance ~2.86 GHz, and their simulation was ~2.90 GHz.
+given by Kajfez & Guillon in [Dielectric resonators](https://search.worldcat.org/en/title/927557286) and readily available on [Wikipedia](https://en.wikipedia.org/wiki/Dielectric_resonator#Theory_of_operation). This approximation yields resonance ~2.86 GHz, and their simulation is ~2.90 GHz.
 
-Our system is slightly different. THey used an aluminum shield, but that's only important for increasing the relaxation times. Since we're just using ours as a magnetometer instead of a quantum computer, it's alright to leave it open to air. In addition, we're using an LED instead of a LASER, so we can place the diamond at one end of a longer ring, rather than worrying about orienting it between two smaller rings. The simplified resonator is defined in `mesh/resonator.geo`, while their double-resonator is in `mesh/double.geo`.
+Our system is slightly different. THey used an aluminum shield, but that is only important for increasing the relaxation time. Since we are using ours only as a magnetometer, it is fine to leave it open to the air. In addition, we are using an LED instead of a LASER, so we can place the diamond at one end of a longer ring, rather than orienting it between two smaller rings. The simplified resonator is defined in `mesh/resonator.geo`, while a reconstruction of their double-resonator is found in `mesh/double.geo`.
 
 ## Weak Formulation
 
