@@ -99,9 +99,9 @@ $$\begin{aligned}
 
 The weak formulation is
 
-$$-\langle \nabla^2 B_z, v\rangle = k^2\langle \mu_r\varepsilon_rB_z, v\rangle$$
-$$\iff$$
-$$\langle \nabla B_z, \nabla v\rangle - \int \frac{B_z}{\partial \hat{n}} v\mathrm{d}S = k^2\langle \mu_r\varepsilon_rB_z, v\rangle.$$
+$$-\langle \nabla^2 B_z, v\rangle = k^2\langle \mu_r\varepsilon_rB_z, v\rangle
+\iff
+\langle \nabla B_z, \nabla v\rangle - \int \frac{B_z}{\partial \hat{n}} v\mathrm{d}S = k^2\langle \mu_r\varepsilon_rB_z, v\rangle.$$
 
 The Sommerfeld radiation boundary condition is
 
