@@ -12,21 +12,17 @@ import matplotlib.pyplot as plt
 import sys
 import scipy
 
-from constants import *
+import constants
+
 import ufl
 from ufl import inner, dot, conj, grad, dx, Dx, ds, TrialFunction, TestFunction, SpatialCoordinate
-
-cache_dir = os.path.expanduser("~/.cache/fenics")
-if os.path.exists(cache_dir):
-    shutil.rmtree(cache_dir)
-    print(f"Cleared FEniCS cache: {cache_dir}")
 
 # Read mesh
 domain, cell_tags, facet_tags = gmshio.read_from_msh("mesh/resonator.msh", MPI.COMM_WORLD, gdim=2)
 dim = domain.topology.dim
 
 # Function space
-V = fem.FunctionSpace(domain, ("CG", 1, (2,)))
+V = fem.FunctionSpace(domain, ("CG", 2, (2,)))
 
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
@@ -36,13 +32,11 @@ epsilon_r = fem.Function(V.sub(0).collapse()[0])
 air_dofs = fem.locate_dofs_topological(V, dim, cell_tags.find(2))
 ceramic_dofs = fem.locate_dofs_topological(V, dim, cell_tags.find(1))
 epsilon_r.x.array[air_dofs] = 1
-epsilon_r.x.array[ceramic_dofs] = EPSILON_R
+epsilon_r.x.array[ceramic_dofs] = constants.EPSILON_R
 
 # Trial and test function
 uz, ur = ufl.split(u)
 vz, vr = ufl.split(v)
-vr = conj(vr)
-vz = conj(vz)
 
 # Coordinate system
 x = SpatialCoordinate(domain)
@@ -50,17 +44,15 @@ z = x[0]
 r = x[1]
 
 ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
-daxis = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
 
-# Define the weak form
-a = r * inner(grad(u), grad(v)) * dx + \
+# Weak form
+a = r * epsilon_r * inner(u, v) * dx
+c = r * inner(grad(u), grad(v)) * dx + \
     1 / r * ur * vr * dx
     
-b = -1j * epsilon_r ** 0.5 * r * inner(u, v) * ds(3) # TODO: Fix this boundary condition
+b = r * inner(u, v) * ds(3)
 
-m = r * epsilon_r * inner(u, v) * dx
-
-# Dirichlet boundary along cylinder's axis
+# Br = 0 along ring's axis
 Vr = V.sub(1)
 boundary_dofs = fem.locate_dofs_topological((Vr, V), dim-1, facet_tags.find(4))
 u_bc = fem.Function(V)
@@ -69,22 +61,23 @@ u_bc.x.array[:] = 0
 bc = fem.dirichletbc(u_bc, boundary_dofs, V.sub(1))
 bcs = [bc]
 
+# Assemble matrices for eigenvalue solver
 A = fem.petsc.assemble_matrix(fem.form(a), bcs=bcs)
 A.assemble()
 B = fem.petsc.assemble_matrix(fem.form(b), bcs=bcs)
 B.assemble()
-M = fem.petsc.assemble_matrix(fem.form(m), bcs=bcs)
-M.assemble()
+C = fem.petsc.assemble_matrix(fem.form(c), bcs=bcs)
+C.assemble()
 
 pep = SLEPc.PEP().create(domain.comm)
-pep.setOperators([A, B, M])  # Mλ^2 + Bλ + A = 0.
+pep.setOperators([C, B, A])  # Aλ^2 + Bλ + C = 0.
 
 # Set solver options
-pep.setType(SLEPc.PEP.Type.LINEAR) # Good results: LINEAR, QARNOLDI, TOAR
-pep.setDimensions(nev=10, ncv=100, mpd=100) # num eigenvalues, num column vectors, max projection dimension
+pep.setType(SLEPc.PEP.Type.TOAR) # Good results: LINEAR, QARNOLDI, TOAR
+pep.setDimensions(nev=100, ncv=200, mpd=100) # num eigenvalues, num column vectors, max projection dimension
 
 # Search around f = 3 GHz
-target = (3e9 * 2 * np.pi / C)
+target = (3e9 * 2 * np.pi / constants.C)
 pep.setWhichEigenpairs(SLEPc.PEP.Which.TARGET_MAGNITUDE)
 pep.setTarget(target)
 
@@ -102,32 +95,34 @@ pc.setType(PETSc.PC.Type.LU)
 # Solve the eigenvalue problem
 pep.solve()
 
-nconv = pep.getConverged()
-print("Total converged", nconv)
+# Avoid memory leaks
+A.destroy()
+B.destroy()
+C.destroy()
 
+nconv = pep.getConverged()
 vr, vi = pep.getOperators()[0].createVecs()
 
 # Plot wave modes
 for i in range(nconv):
     eigval = pep.getEigenpair(i, vr, vi)
-    f = eigval.imag * C / (2 * np.pi)
-    print(f"Frequency {i}: f = {f/1e9:.4f} GHz")
-    if abs(f) < 2e9 or abs(f) > 8e9: continue
+    f = eigval.imag * constants.C / (2 * np.pi)
+    if f < 2e9 or f > 5e9: continue
 
-    H = vr.array.real.reshape(-1, 2)
-    H /= H.max()
-    H = np.pad(H, ((0, 0), (0, 1)))
+    B = vr.array.reshape(-1, 2)
+    B /= B.max()
+    B = np.pad(B, ((0, 0), (0, 1)))
 
     topology, cell_types, geometry = vtk_mesh(V)
     grid = pv.UnstructuredGrid(topology, cell_types, geometry)
-    plotter = pv.Plotter()
+    plotter = pv.Plotter(off_screen = True)
     plotter.add_title(f"{f/1e9:.2f} GHz")
     
     # Magnitude
-    sign = np.sign(np.where(np.abs(H[:, 0]) > np.abs(H[:, 1]), H[:, 0], H[:, 1]))
-    H_mag = sign * np.linalg.norm(H, axis=-1)
+    sign = np.sign(np.where(np.abs(B[:, 0]) > np.abs(B[:, 1]), B[:, 0], B[:, 1]))
+    B_mag = sign * np.linalg.norm(B, axis=-1)
     
-    grid.point_data["u"] = H_mag
+    grid.point_data["u"] = B_mag
     grid.set_active_scalars("u")
     
     plotter.add_mesh(grid, show_edges=False, cmap="jet")
@@ -138,30 +133,27 @@ for i in range(nconv):
     y_coarse = np.linspace(y.min(), y.max(), 25)
     X, Y = np.meshgrid(x_coarse, y_coarse)
     points_coarse = np.column_stack((X.ravel(), Y.ravel(), np.zeros_like(X.ravel())))
-    H_coarse = scipy.interpolate.griddata(grid.points[:, :2], H, points_coarse[:, :2], method='linear')
+    B_coarse = scipy.interpolate.griddata(grid.points[:, :2], B, points_coarse[:, :2], method='linear')
     
-    plotter.add_arrows(points_coarse, H_coarse, mag=1e-3, color="white")
+    plotter.add_arrows(points_coarse, B_coarse, mag=1e-3, color="white")
     
     # Add in reflection
     grid = grid.reflect(normal=(0, 1, 0))
-    H[:, 1] *= -1
-    grid.point_data["u"] = H_mag
+    B[:, 1] *= -1
+    grid.point_data["u"] = B_mag
     grid.set_active_scalars("u")
     
     plotter.add_mesh(grid, show_edges=False, cmap="jet")
     
     points_coarse[:, 1] *= -1
-    H_coarse[:, 1] *= -1
-    plotter.add_arrows(points_coarse, H_coarse, mag=1e-3, color="white")
+    B_coarse[:, 1] *= -1
+    plotter.add_arrows(points_coarse, B_coarse, mag=1e-3, color="white")
     
     # Remove annoying legend
     plotter.remove_scalar_bar()
 
-    # Show
+    # Save screenshots
     plotter.view_xy()
-    plotter.show()
-
-# Clean up
-A.destroy()
-B.destroy()
-M.destroy()
+    plotter.screenshot(f"images/modes/{f/1e9:.2f}_ghz.png")
+    
+    print("Saved", f"images/modes/{f/1e9:.2f}_ghz.png")

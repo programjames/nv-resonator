@@ -2,7 +2,7 @@
 outer_radius = 8.17e-3;
 inner_radius = 4.0e-3;
 height = 1.452e-2;
-gap = 5e-4;
+gap = 1e-3;
 
 // Mesh size
 lc = 1e-3;
