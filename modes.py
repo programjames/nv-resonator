@@ -26,7 +26,7 @@ v = ufl.TestFunction(V)
 epsilon_r = fem.Function(V.sub(0).collapse()[0])
 air_dofs = fem.locate_dofs_topological(V, dim, cell_tags.find(2))
 ceramic_dofs = fem.locate_dofs_topological(V, dim, cell_tags.find(1))
-epsilon_r.x.array[air_dofs] = 1
+epsilon_r.x.array[:] = 1
 epsilon_r.x.array[ceramic_dofs] = constants.EPSILON_R
 
 # Trial and test function

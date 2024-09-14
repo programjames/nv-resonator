@@ -26,12 +26,12 @@ v = ufl.TestFunction(V)
 epsilon_r = fem.Function(V.sub(0).collapse()[0])
 air_dofs = fem.locate_dofs_topological(V, dim, cell_tags.find(2))
 ceramic_dofs = fem.locate_dofs_topological(V, dim, cell_tags.find(1))
-epsilon_r.x.array[air_dofs] = 1
+epsilon_r.x.array[:] = 1.0
 epsilon_r.x.array[ceramic_dofs] = constants.EPSILON_R
 
 # Dipole source
 def dipole_source_expression(x):
-    return x[:2] / (abs(x[0])**3 + abs(x[1])**3 + 1e-8)
+    return [[0.0], [1.0j]] / (abs(x[0])**3 + abs(x[1])**3 + 1e-8)
 
 dipole_source = fem.Function(V)
 dipole_source.interpolate(dipole_source_expression)
@@ -91,7 +91,8 @@ ksp.solve(b, uh.vector)
 # Plot
 
 B = uh.x.array.real.reshape(-1, 2)
-B /= B.max()
+print(abs(B).max())
+B /= abs(B).max()
 B = np.pad(B, ((0, 0), (0, 1)))
 
 topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
