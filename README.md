@@ -5,7 +5,7 @@
 ```bash
 conda create -yn nv-resonator
 conda activate nv-resonator
-conda install -yc conda-forge fenics-dolfinx=0.7 pyvista libstdcxx-ng gmsh scipy
+conda install -yc conda-forge fenics-dolfinx=0.7 petsc=*=complex* pyvista libstdcxx-ng gmsh scipy
 pip install gmsh
 ```
 
@@ -36,7 +36,7 @@ python modes.py
 It should save them in `images/modes/<freq>.png`. Here's an example:
 
 <div style="text-align: center">
-    <img src="images/modes/2.74_ghz.png" alt="Axial Mode of Ring at 2.74 GHz" width="50%"/>
+    <img src="images/mode.png" alt="Electric Field Mode" width="50%"/>
 </div>
 
 

@@ -1,24 +1,19 @@
-from mpi4py import MPI
-from slepc4py import SLEPc
-from petsc4py import PETSc, init
+import mpi4py.MPI as MPI
+import slepc4py.SLEPc as SLEPc
+import petsc4py.PETSc as PETSc
 import dolfinx.fem.petsc
-from dolfinx import fem
-from dolfinx.plot import vtk_mesh
-from dolfinx.io import gmshio
-import os, shutil
+import dolfinx.fem as fem
+import dolfinx.plot
+import dolfinx.io
 import numpy as np
 import pyvista as pv
-import matplotlib.pyplot as plt
-import sys
 import scipy
+import ufl
 
 import constants
 
-import ufl
-from ufl import inner, dot, conj, grad, dx, Dx, ds, TrialFunction, TestFunction, SpatialCoordinate
-
 # Read mesh
-domain, cell_tags, facet_tags = gmshio.read_from_msh("mesh/resonator.msh", MPI.COMM_WORLD, gdim=2)
+domain, cell_tags, facet_tags = dolfinx.io.gmshio.read_from_msh("mesh/resonator.msh", MPI.COMM_WORLD, gdim=2)
 dim = domain.topology.dim
 
 # Function space
@@ -36,21 +31,20 @@ epsilon_r.x.array[ceramic_dofs] = constants.EPSILON_R
 
 # Trial and test function
 uz, ur = ufl.split(u)
-vz, vr = ufl.split(v)
+vz, vr = map(ufl.conj, ufl.split(v))
 
 # Coordinate system
-x = SpatialCoordinate(domain)
+x = ufl.SpatialCoordinate(domain)
 z = x[0]
 r = x[1]
 
 ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
 
 # Weak form
-a = r * epsilon_r * inner(u, v) * dx
-c = r * inner(grad(u), grad(v)) * dx + \
-    1 / r * ur * vr * dx
-    
-b = r * inner(u, v) * ds(3)
+a = r * epsilon_r * ufl.inner(u, v) * ufl.dx
+b = r * ufl.inner(u, v) * ds(3)
+c = r * ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx + \
+    1 / r * ur * vr * ufl.dx
 
 # Br = 0 along ring's axis
 Vr = V.sub(1)
@@ -109,14 +103,14 @@ for i in range(nconv):
     f = eigval.imag * constants.C / (2 * np.pi)
     if f < 2e9 or f > 5e9: continue
 
-    B = vr.array.reshape(-1, 2)
+    B = vr.array.real.reshape(-1, 2)
     B /= B.max()
     B = np.pad(B, ((0, 0), (0, 1)))
 
-    topology, cell_types, geometry = vtk_mesh(V)
+    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
     grid = pv.UnstructuredGrid(topology, cell_types, geometry)
     plotter = pv.Plotter(off_screen = True)
-    plotter.add_title(f"{f/1e9:.2f} GHz")
+    plotter.add_title(f"{f/1e9:.4f} GHz")
     
     # Magnitude
     sign = np.sign(np.where(np.abs(B[:, 0]) > np.abs(B[:, 1]), B[:, 0], B[:, 1]))
@@ -154,6 +148,6 @@ for i in range(nconv):
 
     # Save screenshots
     plotter.view_xy()
-    plotter.screenshot(f"images/modes/{f/1e9:.2f}_ghz.png")
+    plotter.screenshot(f"modes/{f/1e9:.4f}_ghz.png")
     
-    print("Saved", f"images/modes/{f/1e9:.2f}_ghz.png")
+    print("Saved", f"modes/{f/1e9:.4f}_ghz.png")

@@ -4,7 +4,10 @@ inner_radius = 4.0e-3;
 height = 1.895e-2;
 
 // Mesh size
-lc = 5e-4;
+lc = 1e-3;
+
+// NV center point (at the center of the bottom edge)
+Point(13) = {0, 0, 0, lc/10};  // Using a finer mesh size for the NV center
 
 // Resonator
 Point(1) = {-height/2, inner_radius, 0, lc};
@@ -30,15 +33,21 @@ Point(8) = {height, 0, 0, lc};
 Line(5) = {5, 6};
 Line(6) = {6, 7};
 Line(7) = {7, 8};
-Line(8) = {8, 5};
 
-Curve Loop(2) = {5, 6, 7, 8};
+// Connect NV center to the bottom edge
+Line(9) = {8, 13};
+Line(10) = {13, 5};
+
+Curve Loop(2) = {5, 6, 7, 9, 10};
 Plane Surface(2) = {2, 1};
 Physical Surface("air", 2) = {2};
 
 // Boundary
-Physical Curve("casing", 3) = {5,6,7};
-Physical Curve("axis", 4) = {8};
+Physical Curve("casing", 3) = {5, 6, 7};
+Physical Curve("axis", 4) = {9, 10};
+
+// NV center point
+Physical Point("nv_center", 5) = {13};
 
 // Set output format to mesh
 Mesh.Format = 1;  // .msh format
