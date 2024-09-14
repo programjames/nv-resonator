@@ -5,7 +5,7 @@
 ```bash
 conda create -yn nv-resonator
 conda activate nv-resonator
-conda install -yc conda-forge fenics-dolfinx=0.7 pyvista libstdcxx-ng gmsh
+conda install -yc conda-forge fenics-dolfinx=0.7 pyvista libstdcxx-ng gmsh scipy
 pip install gmsh
 ```
 
@@ -61,7 +61,7 @@ $$\frac{0.034 (a/L + 3.45)}{a\sqrt{\epsilon}} GHz,$$
 
 given by Kajfez & Guillon in [Dielectric resonators](https://search.worldcat.org/en/title/927557286) and readily available on [Wikipedia](https://en.wikipedia.org/wiki/Dielectric_resonator#Theory_of_operation). This approximation yields resonance ~2.86 GHz, and their simulation is ~2.90 GHz.
 
-Our system is slightly different. THey used an aluminum shield, but that is only important for increasing the relaxation time. Since we are using ours only as a magnetometer, it is fine to leave it open to the air. In addition, we are using an LED instead of a LASER, so we can place the diamond at one end of a longer ring, rather than orienting it between two smaller rings. The simplified resonator is defined in `mesh/resonator.geo`, while a reconstruction of their double-resonator is found in `mesh/double.geo`.
+Our system is slightly different. They used an aluminum shield, but that is only important for increasing the relaxation time. Since we are using ours only as a magnetometer, it is fine to leave it open to the air. In addition, we are using an LED instead of a LASER, so we can place the diamond at one end of a longer ring, rather than orienting it between two smaller rings. The simplified resonator is defined in `mesh/resonator.geo`, while a reconstruction of their double-resonator is found in `mesh/double.geo`.
 
 ## Weak Formulation
 
@@ -93,8 +93,8 @@ $$-\nabla^2 B = \mu_r\varepsilon_r k^2B.$$
 In cylindrical coordinates, and assuming $B_\theta = 0$, this is
 
 $$\begin{aligned}
-\nabla^2 B_z &= \mu_r\varepsilon_r k^2B_z\\
-\nabla^2 B_r - \frac{B_r}{r^2} &= \mu_r\varepsilon_r k^2B_r\\
+-\nabla^2 B_z &= \mu_r\varepsilon_r k^2B_z\\
+-\nabla^2 B_r + \frac{B_r}{r^2} &= \mu_r\varepsilon_r k^2B_r\\
 \end{aligned}$$
 
 The weak formulation is
