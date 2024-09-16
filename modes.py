@@ -17,50 +17,38 @@ domain, cell_tags, facet_tags = dolfinx.io.gmshio.read_from_msh("mesh/resonator.
 dim = domain.topology.dim
 
 # Function space
-V = fem.FunctionSpace(domain, ("CG", 2, (2,)))
+V = fem.FunctionSpace(domain, ("N1curl", 1))
 
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
 
 # Relative permittivity
-epsilon_r = fem.Function(V.sub(0).collapse()[0])
-air_dofs = fem.locate_dofs_topological(V, dim, cell_tags.find(2))
-ceramic_dofs = fem.locate_dofs_topological(V, dim, cell_tags.find(1))
+V_eps = fem.FunctionSpace(domain, ("DG", 0))
+epsilon_r = fem.Function(V_eps)
+ceramic_dofs = fem.locate_dofs_topological(V_eps, dim, cell_tags.find(1))
 epsilon_r.x.array[:] = 1
 epsilon_r.x.array[ceramic_dofs] = constants.EPSILON_R
-
-# Trial and test function
-uz, ur = ufl.split(u)
-vz, vr = map(ufl.conj, ufl.split(v))
 
 # Coordinate system
 x = ufl.SpatialCoordinate(domain)
 z = x[0]
 r = x[1]
 
+n = ufl.FacetNormal(domain)
 ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
 
 # Weak form
-a = r * epsilon_r * ufl.inner(u, v) * ufl.dx
-b = r * ufl.inner(u, v) * ds(3)
-c = r * ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx + \
-    1 / r * ur * vr * ufl.dx
-
-# Br = 0 along ring's axis
-Vr = V.sub(1)
-boundary_dofs = fem.locate_dofs_topological((Vr, V), dim-1, facet_tags.find(4))
-u_bc = fem.Function(V)
-u_bc.x.array[:] = 0
-
-bc = fem.dirichletbc(u_bc, boundary_dofs, V.sub(1))
-bcs = [bc]
+a = ufl.inner(u, v) * r * ufl.dx
+b = 1 / epsilon_r * ufl.inner(ufl.dot(n, u) * n - u, v) * ds(3)
+# b = b - b
+c = 1 / epsilon_r * ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx
 
 # Assemble matrices for eigenvalue solver
-A = fem.petsc.assemble_matrix(fem.form(a), bcs=bcs)
+A = fem.petsc.assemble_matrix(fem.form(a))
 A.assemble()
-B = fem.petsc.assemble_matrix(fem.form(b), bcs=bcs)
+B = fem.petsc.assemble_matrix(fem.form(b))
 B.assemble()
-C = fem.petsc.assemble_matrix(fem.form(c), bcs=bcs)
+C = fem.petsc.assemble_matrix(fem.form(c))
 C.assemble()
 
 pep = SLEPc.PEP().create(domain.comm)
@@ -97,29 +85,47 @@ C.destroy()
 nconv = pep.getConverged()
 vr, vi = pep.getOperators()[0].createVecs()
 
+outer_radius = 8.17e-3
+inner_radius = 2e-3
+height = 1.452e-2
+
 # Plot wave modes
 for i in range(nconv):
     eigval = pep.getEigenpair(i, vr, vi)
     f = eigval.imag * constants.C / (2 * np.pi)
     if f < 2e9 or f > 5e9: continue
+    print(eigval, f/1e9)
+    
+    u_eigen = fem.Function(V)
+    u_eigen.x.array[:] = vr.array
+    
+    V_plot = fem.FunctionSpace(domain, ("CG", 1, (dim,)))
+    u_plot = fem.Function(V_plot)
+    u_plot.interpolate(u_eigen)
 
-    B = vr.array.real.reshape(-1, 2)
+    B = u_plot.x.array.real.reshape(-1, dim)
     B /= B.max()
     B = np.pad(B, ((0, 0), (0, 1)))
 
-    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
+    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V_plot)
     grid = pv.UnstructuredGrid(topology, cell_types, geometry)
     plotter = pv.Plotter(off_screen = True)
-    plotter.add_title(f"{f/1e9:.4f} GHz")
     
     # Magnitude
-    sign = np.sign(np.where(np.abs(B[:, 0]) > np.abs(B[:, 1]), B[:, 0], B[:, 1]))
-    B_mag = sign * np.linalg.norm(B, axis=-1)
     
-    grid.point_data["u"] = B_mag
+    grid.point_data["u"] = B
     grid.set_active_scalars("u")
     
     plotter.add_mesh(grid, show_edges=False, cmap="jet")
+    
+    def add_line(start, end):
+        line = pv.Line(start, end)
+        plotter.add_mesh(line, color='black', line_width=2)
+    
+    add_line([-height/2, inner_radius, 0], [height/2, inner_radius, 0])
+    add_line([-height/2, outer_radius, 0], [height/2, outer_radius, 0])
+    add_line([-height/2, inner_radius, 0], [-height/2, outer_radius, 0])
+    add_line([height/2, inner_radius, 0], [height/2, outer_radius, 0])
     
     # Arrows
     x, y, z = grid.points.T
@@ -134,10 +140,15 @@ for i in range(nconv):
     # Add in reflection
     grid = grid.reflect(normal=(0, 1, 0))
     B[:, 1] *= -1
-    grid.point_data["u"] = B_mag
+    grid.point_data["u"] = B
     grid.set_active_scalars("u")
     
     plotter.add_mesh(grid, show_edges=False, cmap="jet")
+    
+    add_line([-height/2, -inner_radius, 0], [height/2, -inner_radius, 0])
+    add_line([-height/2, -outer_radius, 0], [height/2, -outer_radius, 0])
+    add_line([-height/2, -inner_radius, 0], [-height/2, -outer_radius, 0])
+    add_line([height/2, -inner_radius, 0], [height/2, -outer_radius, 0])
     
     points_coarse[:, 1] *= -1
     B_coarse[:, 1] *= -1
@@ -145,9 +156,20 @@ for i in range(nconv):
     
     # Remove annoying legend
     plotter.remove_scalar_bar()
+    
+    # Camera
+    x_range = [-height, height]
+    y_range = [-1.5 * outer_radius, 1.5 * outer_radius]
+    
+    # Calculate the center and size of the view
+    center_x = (x_range[0] + x_range[1]) / 2
+    center_y = (y_range[0] + y_range[1]) / 2
+    width = x_range[1] - x_range[0]
+    height = y_range[1] - y_range[0]
 
     # Save screenshots
     plotter.view_xy()
+    plotter.camera.zoom(2.0)
     plotter.screenshot(f"modes/{f/1e9:.4f}_ghz.png")
     
     print("Saved", f"modes/{f/1e9:.4f}_ghz.png")

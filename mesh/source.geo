@@ -1,7 +1,7 @@
 // Parameters
-outer_radius = 7.34e-3;
-inner_radius = 4.0e-3;
-height = 1.895e-2;
+outer_radius = 8.17e-3;
+inner_radius = 2e-3;
+height = 1.452e-2;
 
 // Mesh size
 lc = 1e-3;
