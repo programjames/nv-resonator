@@ -19,7 +19,7 @@ dim = domain.topology.dim
 SOLVE_MAGNETIC = False
 
 # Function space
-V = ("N1curl", 2) if SOLVE_MAGNETIC else ("CG", 1, (2,))
+V = ("N1curl", 2) if SOLVE_MAGNETIC else ("CG", 2, (2,))
 V = fem.FunctionSpace(domain, V)
 
 u = ufl.TrialFunction(V)
@@ -44,7 +44,8 @@ ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
 if SOLVE_MAGNETIC:
     a = ufl.inner(u, v) * r * ufl.dx
     b = 1 / epsilon_r * ufl.inner((ufl.dot(n, u) * n - u), v) * ds(3)
-    c = 1 / epsilon_r * ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx
+    c = 1 / epsilon_r * ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx + \
+        0 #ufl.inner(1 / epsilon_r * ur, vr) * ufl.dx
 else:
     uz, ur = ufl.split(u)
     vz, vr = ufl.split(v)
@@ -79,7 +80,7 @@ pep = SLEPc.PEP().create(domain.comm)
 pep.setOperators([C, B, A])  # Aλ^2 + Bλ + C = 0.
 
 # Set solver options
-pep.setType(SLEPc.PEP.Type.QARNOLDI) # Good results: LINEAR, QARNOLDI, TOAR
+pep.setType(SLEPc.PEP.Type.TOAR) # Good results: LINEAR, QARNOLDI, TOAR
 pep.setDimensions(nev=100, ncv=200, mpd=100) # num eigenvalues, num column vectors, max projection dimension
 
 # Search around f = 3 GHz

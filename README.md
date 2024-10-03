@@ -45,6 +45,9 @@ and the magnetic field:
     <img src="images/magnetic_mode.png" alt="Magnetic Field Mode" width="50%"/>
 </div>
 
+## TODO
+
+- [ ] The magnetic field solver is using Nedelec elements which are divergence free. However, that is in Cartesian coordinates, not cylindrical, which creates a 2-3\% error in resonance frequency. We need to either create cylindrical Nedelec elements, or modify the solver. I'm leaning towards the former.
 
 ## Theory
 
