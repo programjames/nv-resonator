@@ -71,7 +71,7 @@ $$\begin{aligned}
 \nabla \cdot E &= \rho = 0&\text{(in a dielectric)}\\
 \nabla \cdot B &= 0\\
 \nabla \times E &= -\frac{\partial B}{\partial t}\\
-\nabla \times B &= \mu\left(J + \varepsilon\frac{\partial E}{\partial t}\right) = \frac{\mu_r\varepsilon_r}{c^2}\frac{\partial E}{\partial t} &\text{(in a dielectric),}\\
+\nabla \times \left(\frac{1}{\mu} B\right) &= J + \varepsilon\frac{\partial E}{\partial t} = \varepsilon\frac{\partial E}{\partial t} &\text{(in a dielectric),}\\
 \end{aligned}$$
 
 where $\mu_r, \varepsilon_r$ are the relative permeability and permittivity of the material. Assuming we have a mode
@@ -80,7 +80,7 @@ $$B, E\sim e^{i(kx - \omega t)},$$
 
 we get
 
-$$\nabla \times (\nabla\times E) = \mu_r\varepsilon_r k^2E.$$
+$$\nabla \times \left(\frac{1}{\mu_r}\nabla\times E\right) = \varepsilon_r k^2E.$$
 
 Since
 
@@ -88,20 +88,20 @@ $$\nabla \times (\nabla\times E) = \nabla(\nabla\cdot E) - \nabla^2 E,$$
 
 this reduces to
 
-$$-\nabla^2 E = \mu_r\varepsilon_r k^2E.$$
+$$-\nabla^2 \frac{1}{\mu_r}E = \varepsilon_r k^2E.$$
 
 In cylindrical coordinates, and assuming $E_\theta = 0$, this is
 
 $$\begin{aligned}
--\nabla^2 E_z &= \mu_r\varepsilon_r k^2E_z\\
--\nabla^2 E_r + \frac{E_r}{r^2} &= \mu_r\varepsilon_r k^2E_r\\
+-\nabla^2 \frac{1}{\mu_r}E_z &= \varepsilon_r k^2E_z\\
+-\nabla^2 \frac{1}{\mu_r}E_r + \frac{E_r}{r^2} &= \varepsilon_r k^2E_r\\
 \end{aligned}$$
 
 The weak formulation is
 
-$$-\langle \nabla^2 E_z, v\rangle = k^2\langle \mu_r\varepsilon_rE_z, v\rangle
+$$-\left\langle \nabla^2 \frac{1}{\mu_r}E_z, v\right\rangle = k^2\left\langle \varepsilon_rE_z, v\right\rangle
 \iff
-\langle \nabla E_z, \nabla v\rangle - \int \frac{E_z}{\partial \hat{n}} v\mathrm{d}S = k^2\langle \mu_r\varepsilon_rE_z, v\rangle.$$
+\left\langle \nabla \frac{1}{\mu_r}E_z, \nabla v\right\rangle - \int \frac{1}{\mu_r}\frac{E_z}{\partial \hat{n}} v\mathrm{d}S = k^2\left\langle \varepsilon_rE_z, v\right\rangle.$$
 
 The Sommerfeld radiation boundary condition is
 
@@ -109,7 +109,7 @@ $$\frac{E_z}{\partial \hat{n}} = jk E_z,$$
 
 so we're left with
 
-$$\langle \nabla E_z, \nabla v\rangle - jk \int E_z v\mathrm{d}S = k^2 \langle \mu_r\varepsilon_rE_z, v\rangle.$$
+$$\left\langle \nabla \frac{1}{\mu_r}E_z, \nabla v\right\rangle - jk \int \frac{1}{\mu_r}E_z v\mathrm{d}S = k^2 \left\langle \varepsilon_rE_z, v\right\rangle.$$
 
 Letting $\lambda = -jk$, this is a quadratic eigenvalue problem of the form
 
@@ -118,19 +118,19 @@ $$\lambda^2 A + \lambda B + C = 0,$$
 where
 
 $$\begin{aligned}
-A &= \langle \mu_rE_z, v\rangle &\text{(mass matrix)}\\
-B &= \frac{1}{\varepsilon_r}\int E_z v\mathrm{d}S &\text{(boundary condition)}\\
-C &= \frac{1}{\varepsilon_r}\langle \nabla E_z, \nabla v\rangle &\text{(stiffness matrix)}.
+A &= \left\langle \varepsilon_r E_z, v\right\rangle &\text{(mass matrix)}\\
+B &= \int \frac{1}{\mu_r}E_z v\mathrm{d}S &\text{(boundary condition)}\\
+C &= \left\langle \nabla \frac{1}{\mu_r}E_z, \nabla v\right\rangle &\text{(stiffness matrix)}.
 \end{aligned}$$
 
 The derivation for $E_r$ is similar, though we need to adjust
 
-$$C = \frac{1}{\varepsilon_r}\langle \nabla E_r, \nabla v\rangle + \frac{1}{\varepsilon_rr}\langle E_r, v\rangle.$$
+$$C = \left\langle \nabla \frac{1}{\mu_r}E_r, \nabla v\right\rangle + \left\langle \frac{1}{\mu_r}E_r, v\right\rangle.$$
 
-Finally, we only apply the radiation boundary condition along the three non-axial edges of our mesh. The axis just has the Dirichlet $E_r = 0$ condition. To find the magnetic field, we replace $E\mapsto \times B$:
+Finally, we only apply the radiation boundary condition along the three non-axial edges of our mesh. The axis just has the Dirichlet $E_r = 0$ condition. To find the magnetic field, we replace $E\mapsto \times B$, and $\varepsilon_r\leftrightarrow \mu_r$:
 
 $$\begin{aligned}
-A &= \langle \mu_rB_z, v\rangle &\text{(mass matrix)}\\
-B &= \frac{1}{\varepsilon_r}\int (\hat{n}\times (\hat{n}\times B_z)) v\mathrm{d}S &\text{(boundary condition)}\\
-C &= \frac{1}{\varepsilon_r}\langle \nabla\times B_z, \nabla\times v\rangle &\text{(stiffness matrix)}.
+A &= \left\langle \mu_rB_z, v\right\rangle &\text{(mass matrix)}\\
+B &= \int (\hat{n}\times (\hat{n}\times \frac{1}{\varepsilon_r}B_z)) v\mathrm{d}S &\text{(boundary condition)}\\
+C &= \left\langle \nabla\times \frac{1}{\varepsilon_r}B_z, \nabla\times v\right\rangle &\text{(stiffness matrix)}.
 \end{aligned}$$
