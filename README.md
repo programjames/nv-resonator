@@ -80,36 +80,36 @@ $$B, E\sim e^{i(kx - \omega t)},$$
 
 we get
 
-$$\nabla \times (\nabla\times B) = \mu_r\varepsilon_r k^2B.$$
+$$\nabla \times (\nabla\times E) = \mu_r\varepsilon_r k^2E.$$
 
 Since
 
-$$\nabla \times (\nabla\times B) = \nabla(\nabla\cdot B) - \nabla^2 B,$$
+$$\nabla \times (\nabla\times E) = \nabla(\nabla\cdot E) - \nabla^2 E,$$
 
 this reduces to
 
-$$-\nabla^2 B = \mu_r\varepsilon_r k^2B.$$
+$$-\nabla^2 E = \mu_r\varepsilon_r k^2E.$$
 
-In cylindrical coordinates, and assuming $B_\theta = 0$, this is
+In cylindrical coordinates, and assuming $E_\theta = 0$, this is
 
 $$\begin{aligned}
--\nabla^2 B_z &= \mu_r\varepsilon_r k^2B_z\\
--\nabla^2 B_r + \frac{B_r}{r^2} &= \mu_r\varepsilon_r k^2B_r\\
+-\nabla^2 E_z &= \mu_r\varepsilon_r k^2E_z\\
+-\nabla^2 E_r + \frac{E_r}{r^2} &= \mu_r\varepsilon_r k^2E_r\\
 \end{aligned}$$
 
 The weak formulation is
 
-$$-\langle \nabla^2 B_z, v\rangle = k^2\langle \mu_r\varepsilon_rB_z, v\rangle
+$$-\langle \nabla^2 E_z, v\rangle = k^2\langle \mu_r\varepsilon_rE_z, v\rangle
 \iff
-\langle \nabla B_z, \nabla v\rangle - \int \frac{B_z}{\partial \hat{n}} v\mathrm{d}S = k^2\langle \mu_r\varepsilon_rB_z, v\rangle.$$
+\langle \nabla E_z, \nabla v\rangle - \int \frac{E_z}{\partial \hat{n}} v\mathrm{d}S = k^2\langle \mu_r\varepsilon_rE_z, v\rangle.$$
 
 The Sommerfeld radiation boundary condition is
 
-$$\frac{B_z}{\partial \hat{n}} = jk B_z,$$
+$$\frac{E_z}{\partial \hat{n}} = jk E_z,$$
 
 so we're left with
 
-$$\langle \nabla B_z, \nabla v\rangle - jk \int B_z v\mathrm{d}S = k^2 \langle \mu_r\varepsilon_rB_z, v\rangle.$$
+$$\langle \nabla E_z, \nabla v\rangle - jk \int E_z v\mathrm{d}S = k^2 \langle \mu_r\varepsilon_rE_z, v\rangle.$$
 
 Letting $\lambda = -jk$, this is a quadratic eigenvalue problem of the form
 
@@ -118,13 +118,19 @@ $$\lambda^2 A + \lambda B + C = 0,$$
 where
 
 $$\begin{aligned}
-A &= \langle \mu_r\varepsilon_rB_z, v\rangle &\text{(mass matrix)}\\
-B &= \int B_z v\mathrm{d}S &\text{(boundary condition)}\\
-C &= \langle \nabla B_z, \nabla v\rangle &\text{(stiffness matrix)}.
+A &= \langle \mu_rE_z, v\rangle &\text{(mass matrix)}\\
+B &= \frac{1}{\varepsilon_r}\int E_z v\mathrm{d}S &\text{(boundary condition)}\\
+C &= \frac{1}{\varepsilon_r}\langle \nabla E_z, \nabla v\rangle &\text{(stiffness matrix)}.
 \end{aligned}$$
 
-The derivation for $B_r$ is similar, though we need to adjust
+The derivation for $E_r$ is similar, though we need to adjust
 
-$$C = \langle \nabla B_r, \nabla v\rangle + \frac{1}{r}\langle B_r, v\rangle.$$
+$$C = \frac{1}{\varepsilon_r}\langle \nabla E_r, \nabla v\rangle + \frac{1}{\varepsilon_rr}\langle E_r, v\rangle.$$
 
-Finally, we only apply the radiation boundary condition along the three non-axial edges of our mesh. The axis just has the Dirichlet $B_r = 0$ condition.
+Finally, we only apply the radiation boundary condition along the three non-axial edges of our mesh. The axis just has the Dirichlet $E_r = 0$ condition. To find the magnetic field, we replace $E\mapsto \times B$:
+
+$$\begin{aligned}
+A &= \langle \mu_rB_z, v\rangle &\text{(mass matrix)}\\
+B &= \frac{1}{\varepsilon_r}\int (\hat{n}\times (\hat{n}\times B_z)) v\mathrm{d}S &\text{(boundary condition)}\\
+C &= \frac{1}{\varepsilon_r}\langle \nabla\times B_z, \nabla\times v\rangle &\text{(stiffness matrix)}.
+\end{aligned}$$

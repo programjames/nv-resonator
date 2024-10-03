@@ -13,7 +13,7 @@ import ufl
 import constants
 
 # Read mesh
-domain, cell_tags, facet_tags = dolfinx.io.gmshio.read_from_msh("mesh/source.msh", MPI.COMM_WORLD, gdim=2)
+domain, cell_tags, facet_tags = dolfinx.io.gmshio.read_from_msh("mesh/resonator.msh", MPI.COMM_WORLD, gdim=2)
 dim = domain.topology.dim
 
 
@@ -32,7 +32,7 @@ epsilon_r.x.array[ceramic_dofs] = constants.EPSILON_R
 
 # Dipole source
 def dipole_source_expression(x):
-    return [[0.0], [1.0j],] / (abs(x[0])**3 + abs(x[1])**3 + 1e-8)
+    return [[1.0], [0.0]] / (x[0]**2 + x[1]**2 + 1e-8)
 
 dipole_source = fem.Function(V)
 dipole_source.interpolate(dipole_source_expression)
@@ -46,9 +46,16 @@ n = ufl.FacetNormal(domain)
 ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
 
 # Weak form
-a = epsilon_r * ufl.inner(u, v) * r * ufl.dx
-b = ufl.inner(ufl.inner(n, ufl.conj(u)) * n, v) * r * ds(3)
-c = ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx
+a = ufl.inner(u, v) * r * ufl.dx
+c = 1 / epsilon_r * ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx
+
+# Boundary condition
+boundary_dofs = fem.locate_dofs_topological(V, dim-1, facet_tags.find(3))
+u_bc = fem.Function(V)
+u_bc.x.array[:] = 0
+bc = fem.dirichletbc(u_bc, boundary_dofs)
+bcs = [bc]
+
 
 # NV center frequency (Hz)
 f = 2.87e9
@@ -56,10 +63,10 @@ k = -2j * np.pi * f / constants.C
 
 
 # Problem
-a = k**2 * a + k * b + c
+a = k**2 * a + c
 L = ufl.inner(dipole_source, v) * r * ufl.dx
 
-A = fem.petsc.assemble_matrix(fem.form(a))
+A = fem.petsc.assemble_matrix(fem.form(a), bcs=bcs)
 A.assemble()
 b = fem.petsc.assemble_vector(fem.form(L))
 b.assemble()
@@ -85,7 +92,6 @@ u_plot = fem.Function(V_plot)
 u_plot.interpolate(uh)
 
 B = u_plot.x.array.real.reshape(-1, dim)
-print(abs(B).max())
 B /= abs(B).max()
 
 topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V_plot)
@@ -115,7 +121,7 @@ grid = grid.reflect(normal=(0, 1, 0))
 grid.point_data["u"] = B
 grid.set_active_scalars("u")
 
-plotter.add_mesh(grid, show_edges=False, cmap="jet")
+plotter.add_mesh(grid, show_edges=True, cmap="jet")
 
 points_coarse[:, 1] *= -1
 B_coarse[:, 1] *= -1

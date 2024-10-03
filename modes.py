@@ -16,16 +16,19 @@ import constants
 domain, cell_tags, facet_tags = dolfinx.io.gmshio.read_from_msh("mesh/resonator.msh", MPI.COMM_WORLD, gdim=2)
 dim = domain.topology.dim
 
+SOLVE_MAGNETIC = True
+
 # Function space
-V = fem.FunctionSpace(domain, ("N1curl", 1))
+V = ("N1curl", 2) if SOLVE_MAGNETIC else ("CG", 1, (2,))
+V = fem.FunctionSpace(domain, V)
 
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
 
 # Relative permittivity
-V_eps = fem.FunctionSpace(domain, ("DG", 0))
-epsilon_r = fem.Function(V_eps)
+V_eps = fem.FunctionSpace(domain, ("DG", 0)) if SOLVE_MAGNETIC else V.sub(0).collapse()[0]
 ceramic_dofs = fem.locate_dofs_topological(V_eps, dim, cell_tags.find(1))
+epsilon_r = fem.Function(V_eps)
 epsilon_r.x.array[:] = 1
 epsilon_r.x.array[ceramic_dofs] = constants.EPSILON_R
 
@@ -38,17 +41,35 @@ n = ufl.FacetNormal(domain)
 ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
 
 # Weak form
-a = ufl.inner(u, v) * r * ufl.dx
-b = 1 / epsilon_r * ufl.inner(ufl.dot(n, u) * n - u, v) * ds(3)
+if SOLVE_MAGNETIC:
+    a = ufl.inner(u, v) * r * ufl.dx
+    b = 1 / epsilon_r * ufl.inner((ufl.dot(n, u) * n - u), v) * ds(3)
+    c = 1 / epsilon_r * ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx
+else:
+    a = ufl.inner(u, v) * r * ufl.dx
+    b = 1 / epsilon_r * ufl.inner(u, v) * ds(3)
+    c = 1 / epsilon_r * ufl.inner(ufl.grad(u), ufl.grad(v)) * r * ufl.dx
+
+bcs = []
+
+"""
+Uncomment for Dirichlet boundary conditions instead of radiation. Only works
+for the the electric field for now (magnetic field needs curl(B) = 0, not B = 0).
+"""
+
 # b = b - b
-c = 1 / epsilon_r * ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx
+# boundary_dofs = fem.locate_dofs_topological(V, dim-1, facet_tags.find(3))
+# u_bc = fem.Function(V)
+# u_bc.x.array[:] = 0
+# bc = fem.dirichletbc(u_bc, boundary_dofs)
+# bcs = [bc]
 
 # Assemble matrices for eigenvalue solver
-A = fem.petsc.assemble_matrix(fem.form(a))
+A = fem.petsc.assemble_matrix(fem.form(a), bcs=bcs)
 A.assemble()
-B = fem.petsc.assemble_matrix(fem.form(b))
+B = fem.petsc.assemble_matrix(fem.form(b), bcs=bcs)
 B.assemble()
-C = fem.petsc.assemble_matrix(fem.form(c))
+C = fem.petsc.assemble_matrix(fem.form(c), bcs=bcs)
 C.assemble()
 
 pep = SLEPc.PEP().create(domain.comm)
@@ -93,8 +114,7 @@ height = 1.452e-2
 for i in range(nconv):
     eigval = pep.getEigenpair(i, vr, vi)
     f = eigval.imag * constants.C / (2 * np.pi)
-    if f < 2e9 or f > 5e9: continue
-    print(eigval, f/1e9)
+    if f < 2e9 or f > 6e9: continue
     
     u_eigen = fem.Function(V)
     u_eigen.x.array[:] = vr.array
@@ -116,7 +136,7 @@ for i in range(nconv):
     grid.point_data["u"] = B
     grid.set_active_scalars("u")
     
-    plotter.add_mesh(grid, show_edges=False, cmap="jet")
+    plotter.add_mesh(grid, show_edges=False, cmap="turbo")
     
     def add_line(start, end):
         line = pv.Line(start, end)
@@ -134,8 +154,9 @@ for i in range(nconv):
     X, Y = np.meshgrid(x_coarse, y_coarse)
     points_coarse = np.column_stack((X.ravel(), Y.ravel(), np.zeros_like(X.ravel())))
     B_coarse = scipy.interpolate.griddata(grid.points[:, :2], B, points_coarse[:, :2], method='linear')
+    B_coarse /= np.linalg.norm(B_coarse, axis=1)[:, None]
     
-    plotter.add_arrows(points_coarse, B_coarse, mag=1e-3, color="white")
+    plotter.add_arrows(points_coarse, B_coarse, mag=5e-4, color="white")
     
     # Add in reflection
     grid = grid.reflect(normal=(0, 1, 0))
@@ -143,7 +164,7 @@ for i in range(nconv):
     grid.point_data["u"] = B
     grid.set_active_scalars("u")
     
-    plotter.add_mesh(grid, show_edges=False, cmap="jet")
+    plotter.add_mesh(grid, show_edges=False, cmap="turbo")
     
     add_line([-height/2, -inner_radius, 0], [height/2, -inner_radius, 0])
     add_line([-height/2, -outer_radius, 0], [height/2, -outer_radius, 0])
@@ -152,20 +173,10 @@ for i in range(nconv):
     
     points_coarse[:, 1] *= -1
     B_coarse[:, 1] *= -1
-    plotter.add_arrows(points_coarse, B_coarse, mag=1e-3, color="white")
+    plotter.add_arrows(points_coarse, B_coarse, mag=5e-4, color="white")
     
     # Remove annoying legend
     plotter.remove_scalar_bar()
-    
-    # Camera
-    x_range = [-height, height]
-    y_range = [-1.5 * outer_radius, 1.5 * outer_radius]
-    
-    # Calculate the center and size of the view
-    center_x = (x_range[0] + x_range[1]) / 2
-    center_y = (y_range[0] + y_range[1]) / 2
-    width = x_range[1] - x_range[0]
-    height = y_range[1] - y_range[0]
 
     # Save screenshots
     plotter.view_xy()

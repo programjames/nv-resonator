@@ -5,7 +5,7 @@ inner_radius = 2e-3;
 height = 1.452e-2;
 
 // Mesh size
-lc = 2e-4;
+lc = 2e-3;
 
 // Resonator
 Point(1) = {-height/2, inner_radius, 0, lc};
