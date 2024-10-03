@@ -16,7 +16,7 @@ import constants
 domain, cell_tags, facet_tags = dolfinx.io.gmshio.read_from_msh("mesh/resonator.msh", MPI.COMM_WORLD, gdim=2)
 dim = domain.topology.dim
 
-SOLVE_MAGNETIC = False
+SOLVE_MAGNETIC = True
 
 # Function space
 V = ("N1curl", 2) if SOLVE_MAGNETIC else ("CG", 1, (2,))
@@ -43,10 +43,10 @@ ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
 # Weak form; note mu_r = 1
 if SOLVE_MAGNETIC:
     a = ufl.inner(u, v) * r * ufl.dx
-    b = ufl.inner(1 / epsilon_r * (ufl.dot(n, u) * n - u), v) * ds(3)
-    c = ufl.inner(1 / epsilon_r * ufl.curl(u), ufl.curl(v)) * r * ufl.dx
+    b = 1 / epsilon_r * ufl.inner((ufl.dot(n, u) * n - u), v) * ds(3)
+    c = 1 / epsilon_r * ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx
 else:
-    a = ufl.inner(epsilon_r * u, v) * r * ufl.dx
+    a = epsilon_r * ufl.inner(u, v) * r * ufl.dx
     b = ufl.inner(u, v) * ds(3)
     c = ufl.inner(ufl.grad(u), ufl.grad(v)) * r * ufl.dx
 
