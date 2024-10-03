@@ -16,7 +16,7 @@ import constants
 domain, cell_tags, facet_tags = dolfinx.io.gmshio.read_from_msh("mesh/resonator.msh", MPI.COMM_WORLD, gdim=2)
 dim = domain.topology.dim
 
-SOLVE_MAGNETIC = True
+SOLVE_MAGNETIC = False
 
 # Function space
 V = ("N1curl", 2) if SOLVE_MAGNETIC else ("CG", 1, (2,))
@@ -46,9 +46,12 @@ if SOLVE_MAGNETIC:
     b = 1 / epsilon_r * ufl.inner((ufl.dot(n, u) * n - u), v) * ds(3)
     c = 1 / epsilon_r * ufl.inner(ufl.curl(u), ufl.curl(v)) * r * ufl.dx
 else:
+    uz, ur = ufl.split(u)
+    vz, vr = ufl.split(v)
     a = epsilon_r * ufl.inner(u, v) * r * ufl.dx
     b = ufl.inner(u, v) * ds(3)
-    c = ufl.inner(ufl.grad(u), ufl.grad(v)) * r * ufl.dx
+    c = ufl.inner(ufl.grad(u), ufl.grad(v)) * r * ufl.dx + \
+        ufl.inner(ur, vr) * ufl.dx
 
 bcs = []
 
@@ -76,7 +79,7 @@ pep = SLEPc.PEP().create(domain.comm)
 pep.setOperators([C, B, A])  # Aλ^2 + Bλ + C = 0.
 
 # Set solver options
-pep.setType(SLEPc.PEP.Type.TOAR) # Good results: LINEAR, QARNOLDI, TOAR
+pep.setType(SLEPc.PEP.Type.QARNOLDI) # Good results: LINEAR, QARNOLDI, TOAR
 pep.setDimensions(nev=100, ncv=200, mpd=100) # num eigenvalues, num column vectors, max projection dimension
 
 # Search around f = 3 GHz
@@ -114,7 +117,7 @@ height = 1.452e-2
 for i in range(nconv):
     eigval = pep.getEigenpair(i, vr, vi)
     f = eigval.imag * constants.C / (2 * np.pi)
-    if f < 2e9 or f > 6e9: continue
+    if f < 1e9 or f > 6e9: continue
     
     u_eigen = fem.Function(V)
     u_eigen.x.array[:] = vr.array

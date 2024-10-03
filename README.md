@@ -33,10 +33,16 @@ We're looking for radial or axial modes, so we only need to simulate a longitudi
 python modes.py
 ```
 
-It should save them in `images/modes/<freq>.png`. Here's an example:
+It should save them in `images/modes/<freq>.png`. Here's an example of the electric field:
 
 <div style="text-align: center">
-    <img src="images/mode.png" alt="Electric Field Mode" width="50%"/>
+    <img src="images/electric_mode.png" alt="Electric Field Mode" width="50%"/>
+</div>
+
+and the magnetic field:
+
+<div style="text-align: center">
+    <img src="images/magnetic_mode.png" alt="Magnetic Field Mode" width="50%"/>
 </div>
 
 
@@ -125,7 +131,7 @@ C &= \left\langle \nabla \frac{1}{\mu_r}E_z, \nabla v\right\rangle &\text{(stiff
 
 The derivation for $E_r$ is similar, though we need to adjust
 
-$$C = \left\langle \nabla \frac{1}{\mu_r}E_r, \nabla v\right\rangle + \left\langle \frac{1}{\mu_r}E_r, v\right\rangle.$$
+$$C = \left\langle \nabla \frac{1}{\mu_r}E_r, \nabla v\right\rangle + \left\langle \frac{1}{\mu_r r}E_r, v\right\rangle.$$
 
 Finally, we only apply the radiation boundary condition along the three non-axial edges of our mesh. The axis just has the Dirichlet $E_r = 0$ condition. To find the magnetic field, we replace $E\mapsto \times B$, and $\varepsilon_r\leftrightarrow \mu_r$:
 
